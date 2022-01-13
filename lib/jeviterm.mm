@@ -102,10 +102,13 @@ int demo_main(std::string clientName) {
         // cmdProp.set_json_value("/usr/bin/env bash -l -c vi");
 
         iterm2::CreateTabRequest ctReqMsg;
-        // auto cmdProp = ctReqMsg.add_custom_profile_properties();
-        // cmdProp->set_key("Command");
-        // cmdProp->set_json_value("/usr/bin/env bash -l -c vi");
-        ctReqMsg.set_command("/usr/bin/env bash -l -c vi");
+        auto cstCmdProp = ctReqMsg.add_custom_profile_properties();
+        cstCmdProp->set_key("Custom Command");
+        cstCmdProp->set_json_value("\"Yes\"");
+        auto cmdProp = ctReqMsg.add_custom_profile_properties();
+        cmdProp->set_key("Command");
+        cmdProp->set_json_value("\"/usr/bin/env bash -l -c vi\"");
+        // ctReqMsg.set_command("/usr/bin/env bash -l -c vi");
         *reqMsg.mutable_create_tab_request() = ctReqMsg;
 
         const auto out_msg_sz = reqMsg.ByteSizeLong();
@@ -141,6 +144,8 @@ int demo_main(std::string clientName) {
             // The make_printable() function helps print a ConstBufferSequence
             // std::cout << beast::make_printable(buffer.data()) << "\n";
         }
+
+        // sleep(5);
 
         std::cerr << "close begin\n";
         // Close the WebSocket connection
