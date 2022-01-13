@@ -8,15 +8,16 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
-#include <string>
 #include <optional>
+#include <string>
 
-namespace beast     = boost::beast;         // from <boost/beast.hpp>
-namespace http      = beast::http;          // from <boost/beast/http.hpp>
-namespace websocket = beast::websocket;     // from <boost/beast/websocket.hpp>
-namespace net       = boost::asio;          // from <boost/asio.hpp>
-using unix_fd       = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
+namespace beast     = boost::beast;                  // from <boost/beast.hpp>
+namespace http      = beast::http;                   // from <boost/beast/http.hpp>
+namespace websocket = beast::websocket;              // from <boost/beast/websocket.hpp>
+namespace net       = boost::asio;                   // from <boost/asio.hpp>
+using unix_fd = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
 
 struct CookieKey {
     std::string cookie;
@@ -25,19 +26,32 @@ struct CookieKey {
 
 std::optional<CookieKey> getCookieAndKey(std::string clientName) {
     NSDictionary<NSString *, id> *err = nil;
-    NSAppleScript *get_stuff_as = [[NSAppleScript alloc] initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie and key for app named \"%s\"", clientName.c_str()]];
-    NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
+    NSAppleScript *get_stuff_as       = [[NSAppleScript alloc]
+        initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
+                                                        @"and key for app named \"%s\"",
+                                                  clientName.c_str()]];
+    NSAppleEventDescriptor *res_evt   = [get_stuff_as executeAndReturnError:&err];
     if (err) {
         NSLog(@"AppleScript error: %@", err);
         return std::nullopt;
     }
-    NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString: @" "];
+    NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString:@" "];
     assert(splitParts.count == 2);
-    return CookieKey{.cookie = std::string{splitParts[0].UTF8String}, .key = std::string{splitParts[1].UTF8String}};
+    return CookieKey{.cookie = std::string{splitParts[0].UTF8String},
+                     .key    = std::string{splitParts[1].UTF8String}};
 }
 
 std::string getSocketPath(void) {
-    return std::string{[[[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask][0] path] UTF8String]} + "/iTerm2/private/socket";
+    return std::string{[[[NSFileManager.defaultManager
+               URLsForDirectory:NSApplicationSupportDirectory
+                      inDomains:NSUserDomainMask][0] path] UTF8String]} +
+           "/iTerm2/private/socket";
+}
+
+void hexdump(void *buf, std::size_t sz) {
+    for (const uint8_t *p = (const uint8_t *)buf; p < (const uint8_t *)buf + sz; ++p) {
+        std::cerr << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)*p;
+    }
 }
 
 // Sends a WebSocket message and prints the response
@@ -73,7 +87,6 @@ int demo_main(std::string clientName) {
             req.set("x-iterm2-cookie", cookieKey->cookie);
             req.set("x-iterm2-key", cookieKey->key);
             req.set("x-iterm2-advisory-name", clientName);
-
         }));
 
         // Perform the websocket handshake
@@ -81,10 +94,18 @@ int demo_main(std::string clientName) {
 
         iterm2::ClientOriginatedMessage reqMsg;
 
-        iterm2::FocusRequest focReqMsg;
-        // *reqMsg.mutable_focus_request() = focReqMsg;
+        // iterm2::FocusRequest focReqMsg;
+        // reqMsg.set_allocated_focus_request(&focReqMsg);
+
+        // iterm2::ProfileProperty cmdProp;
+        // cmdProp.set_key("Command");
+        // cmdProp.set_json_value("/usr/bin/env bash -l -c vi");
 
         iterm2::CreateTabRequest ctReqMsg;
+        // auto cmdProp = ctReqMsg.add_custom_profile_properties();
+        // cmdProp->set_key("Command");
+        // cmdProp->set_json_value("/usr/bin/env bash -l -c vi");
+        ctReqMsg.set_command("/usr/bin/env bash -l -c vi");
         *reqMsg.mutable_create_tab_request() = ctReqMsg;
 
         const auto out_msg_sz = reqMsg.ByteSizeLong();
@@ -92,33 +113,44 @@ int demo_main(std::string clientName) {
         // out_msg_buf.resize(out_msg_sz);
         // reqMsg.SerializeToArray(out_msg_buf.data(), out_msg_buf.size());
         beast::flat_buffer out_msg_buf{out_msg_sz};
-        reqMsg.SerializeToArray(out_msg_buf.prepare(out_msg_buf.size()).data(), out_msg_buf.size());
-        std::cerr << "out_msg_sz: " << out_msg_sz << "\n";
-        std::cerr << "out_msg_buf: " << beast::make_printable(out_msg_buf.data()) << "\n";
+        reqMsg.SerializeToArray(out_msg_buf.prepare(out_msg_sz).data(), out_msg_sz);
+        out_msg_buf.commit(out_msg_sz);
+        std::cerr << "out_msg_sz: " << out_msg_sz << " buf sz: " << out_msg_buf.size() << "\n";
+        std::cerr << "out_msg_buf: ";
+        hexdump(out_msg_buf.data().data(), out_msg_buf.size());
+        std::cerr << "\n";
 
+        // return 0;
+
+        std::cerr << "write begin\n";
         // Send the message
         // ws.write(beast::flat_buffer{out_msg_buf.data(), out_msg_buf.size()});
         ws.write(out_msg_buf.data());
+        std::cerr << "write end\n";
 
         // This buffer will hold the incoming message
         beast::flat_buffer buffer;
 
-        for (int loopnum = 0; loopnum < 2; ++loopnum) {
+        for (int loopnum = 0; loopnum < 1; ++loopnum) {
             // Read a message into our buffer
+            std::cerr << "read begin\n";
             ws.read(buffer);
+            std::cerr << "read end\n";
             std::cout << "read n bytes: " << buffer.size() << "\n";
 
             // The make_printable() function helps print a ConstBufferSequence
-            std::cout << beast::make_printable(buffer.data()) << "\n";
+            // std::cout << beast::make_printable(buffer.data()) << "\n";
         }
 
+        std::cerr << "close begin\n";
         // Close the WebSocket connection
         ws.close(websocket::close_code::normal);
+        std::cerr << "close end\n";
 
         // If we get here then the connection is closed gracefully
 
         // The make_printable() function helps print a ConstBufferSequence
-        std::cout << beast::make_printable(buffer.data()) << "\n";
+        // std::cout << beast::make_printable(buffer.data()) << "\n";
     } catch (std::exception const &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
