@@ -1,0 +1,2 @@
+add_executable(jevitermtest jevitermtest.c)
+target_link_libraries(jevitermtest jeviterm)
