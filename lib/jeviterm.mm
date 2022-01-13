@@ -58,6 +58,7 @@ int demo_main(std::string clientName) {
         auto ep = unix_fd::endpoint{sockPath};
         websocket::stream<unix_fd::socket> ws{ioc};
         std::cerr << "ws obj created\n";
+        ws.binary(true);
 
         // Make the connection on the IP address we get from a lookup
         boost::beast::get_lowest_layer(ws).connect(ep);
@@ -67,8 +68,8 @@ int demo_main(std::string clientName) {
         ws.set_option(websocket::stream_base::decorator([&](websocket::request_type &req) {
             req.set("origin", "ws://localhost/");
             req.set("host", "localhost");
-            req.set("x-iterm2-library-version", "jeviterm 0.24");
-            req.set("x-iterm2-disable-auth-ui", "false");
+            req.set("x-iterm2-library-version", "python 0.24");
+            req.set("x-iterm2-disable-auth-ui", "true");
             req.set("x-iterm2-cookie", cookieKey->cookie);
             req.set("x-iterm2-key", cookieKey->key);
             req.set("x-iterm2-advisory-name", clientName);
@@ -78,15 +79,26 @@ int demo_main(std::string clientName) {
         // Perform the websocket handshake
         ws.handshake("api.iterm2.com", "/");
 
-        iterm2::FocusRequest focReqMsg;
         iterm2::ClientOriginatedMessage reqMsg;
-        reqMsg.submessage() = focReqMsg;
-        beast::flat_buffer out_msg_buf;
-        const auto out_msg_sz = focReqMsg.ByteSizeLong();
-        out_msg_buf.resize(out_msg_sz);
+
+        iterm2::FocusRequest focReqMsg;
+        // *reqMsg.mutable_focus_request() = focReqMsg;
+
+        iterm2::CreateTabRequest ctReqMsg;
+        *reqMsg.mutable_create_tab_request() = ctReqMsg;
+
+        const auto out_msg_sz = reqMsg.ByteSizeLong();
+        // std::vector<uint8_t> out_msg_buf;
+        // out_msg_buf.resize(out_msg_sz);
+        // reqMsg.SerializeToArray(out_msg_buf.data(), out_msg_buf.size());
+        beast::flat_buffer out_msg_buf{out_msg_sz};
+        reqMsg.SerializeToArray(out_msg_buf.prepare(out_msg_buf.size()).data(), out_msg_buf.size());
+        std::cerr << "out_msg_sz: " << out_msg_sz << "\n";
+        std::cerr << "out_msg_buf: " << beast::make_printable(out_msg_buf.data()) << "\n";
 
         // Send the message
-        // ws.write(net::buffer("hello warld"));
+        // ws.write(beast::flat_buffer{out_msg_buf.data(), out_msg_buf.size()});
+        ws.write(out_msg_buf.data());
 
         // This buffer will hold the incoming message
         beast::flat_buffer buffer;
@@ -94,9 +106,10 @@ int demo_main(std::string clientName) {
         for (int loopnum = 0; loopnum < 2; ++loopnum) {
             // Read a message into our buffer
             ws.read(buffer);
+            std::cout << "read n bytes: " << buffer.size() << "\n";
 
             // The make_printable() function helps print a ConstBufferSequence
-            std::cout << beast::make_printable(buffer.data()) << std::endl;
+            std::cout << beast::make_printable(buffer.data()) << "\n";
         }
 
         // Close the WebSocket connection
@@ -105,7 +118,7 @@ int demo_main(std::string clientName) {
         // If we get here then the connection is closed gracefully
 
         // The make_printable() function helps print a ConstBufferSequence
-        std::cout << beast::make_printable(buffer.data()) << std::endl;
+        std::cout << beast::make_printable(buffer.data()) << "\n";
     } catch (std::exception const &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
