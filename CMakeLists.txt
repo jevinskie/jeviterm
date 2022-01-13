@@ -17,10 +17,8 @@ endif ()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_EXTENSIONS YES)
 
-add_compile_options(-fsanitize=address -O0 -g)
-add_link_options(-fsanitize=address)
-
-add_subdirectory(3rdparty)
+# add_compile_options(-fsanitize=address -O0 -g)
+# add_link_options(-fsanitize=address)
 
 add_subdirectory(lib)
 add_subdirectory(tools)

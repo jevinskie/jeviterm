@@ -163,6 +163,7 @@ int demo_main(std::string clientName) {
     return EXIT_SUCCESS;
 }
 
+__attribute__((visibility("default")))
 void doit(void) {
     NSLog(@"Just Do It");
     demo_main("jevitermtest");
