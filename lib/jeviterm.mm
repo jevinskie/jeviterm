@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <optional>
 
 namespace beast     = boost::beast;         // from <boost/beast.hpp>
 namespace http      = beast::http;          // from <boost/beast/http.hpp>
@@ -17,24 +18,37 @@ namespace websocket = beast::websocket;     // from <boost/beast/websocket.hpp>
 namespace net       = boost::asio;          // from <boost/asio.hpp>
 using unix_fd       = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
 
+struct CookieKey {
+    std::string cookie;
+    std::string key;
+};
+
+std::optional<CookieKey> getCookieAndKey(std::string clientName) {
+    NSDictionary<NSString *, id> *err = nil;
+    NSAppleScript *get_stuff_as = [[NSAppleScript alloc] initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie and key for app named \"%s\"", clientName.c_str()]];
+    NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
+    if (err) {
+        NSLog(@"AppleScript error: %@", err);
+        return std::nullopt;
+    }
+    NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString: @" "];
+    assert(splitParts.count == 2);
+    return CookieKey{.cookie = std::string{splitParts[0].UTF8String}, .key = std::string{splitParts[1].UTF8String}};
+}
+
 std::string getSocketPath(void) {
     return std::string{[[[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask][0] path] UTF8String]} + "/iTerm2/private/socket";
 }
 
 // Sends a WebSocket message and prints the response
-int demo_main(int argc, const char *argv[]) {
+int demo_main(std::string clientName) {
+    const auto cookieKey = getCookieAndKey(clientName);
+    if (!cookieKey) {
+        std::cerr << "failed to get cookie and key from AppleScript\n";
+        return -1;
+    }
+    std::cerr << "cookie: " << cookieKey->cookie << " key: " << cookieKey->key << "\n";
     try {
-        // Check command line arguments.
-        if (argc != 4) {
-            std::cerr << "Usage: websocket-client-sync <host> <port> <text>\n"
-                      << "Example:\n"
-                      << "    websocket-client-sync echo.websocket.org 80 \"Hello, world!\"\n";
-            return EXIT_FAILURE;
-        }
-        std::string host = argv[1];
-        auto const port  = argv[2];
-        auto const text  = argv[3];
-
         // The io_context is required for all I/O
         net::io_context ioc;
 
@@ -43,28 +57,36 @@ int demo_main(int argc, const char *argv[]) {
         std::cerr << "sockPath: " << sockPath << "\n";
         auto ep = unix_fd::endpoint{sockPath};
         websocket::stream<unix_fd::socket> ws{ioc};
-        std::cerr << "ws objctreated" << "\n";
+        std::cerr << "ws obj created\n";
 
         // Make the connection on the IP address we get from a lookup
-        ws.next_layer().connect(ep);
-
-        // Update the host_ string. This will provide the value of the
-        // Host HTTP header during the WebSocket handshake.
-        // See https://tools.ietf.org/html/rfc7230#section-5.4
-        // host += ':' + std::to_string(ep.port());
-        host += ":fart";
+        boost::beast::get_lowest_layer(ws).connect(ep);
+        std::cerr << "connected\n";
 
         // Set a decorator to change the User-Agent of the handshake
-        ws.set_option(websocket::stream_base::decorator([](websocket::request_type &req) {
-            req.set(http::field::user_agent,
-                    std::string(BOOST_BEAST_VERSION_STRING) + " websocket-client-coro");
+        ws.set_option(websocket::stream_base::decorator([&](websocket::request_type &req) {
+            req.set("origin", "ws://localhost/");
+            req.set("host", "localhost");
+            req.set("x-iterm2-library-version", "jeviterm 0.24");
+            req.set("x-iterm2-disable-auth-ui", "false");
+            req.set("x-iterm2-cookie", cookieKey->cookie);
+            req.set("x-iterm2-key", cookieKey->key);
+            req.set("x-iterm2-advisory-name", clientName);
+
         }));
 
         // Perform the websocket handshake
-        ws.handshake(host, "/");
+        ws.handshake("api.iterm2.com", "/");
+
+        iterm2::FocusRequest focReqMsg;
+        iterm2::ClientOriginatedMessage reqMsg;
+        reqMsg.submessage() = focReqMsg;
+        beast::flat_buffer out_msg_buf;
+        const auto out_msg_sz = focReqMsg.ByteSizeLong();
+        out_msg_buf.resize(out_msg_sz);
 
         // Send the message
-        ws.write(net::buffer(std::string(text)));
+        // ws.write(net::buffer("hello warld"));
 
         // This buffer will hold the incoming message
         beast::flat_buffer buffer;
@@ -93,7 +115,5 @@ int demo_main(int argc, const char *argv[]) {
 
 void doit(void) {
     NSLog(@"Just Do It");
-    const char *demo_args[] = {"demo-main", "protected-tor-88346.herokuapp.com", "80",
-                               "hello donkeys"};
-    demo_main(4, static_cast<const char **>(demo_args));
+    demo_main("jevitermtest");
 }

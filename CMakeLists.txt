@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(jeviterm C OBJCXX)
+project(jeviterm C CXX OBJCXX)
 
 set(CMAKE_XCODE_ATTRIBUTE_COMPILER_INDEX_STORE_ENABLE NO)
 
