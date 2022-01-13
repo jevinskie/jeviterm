@@ -4,7 +4,7 @@
 #import <Foundation/Foundation.h>
 
 #include <boost/asio/connect.hpp>
-#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <cstdlib>
@@ -15,7 +15,11 @@ namespace beast     = boost::beast;         // from <boost/beast.hpp>
 namespace http      = beast::http;          // from <boost/beast/http.hpp>
 namespace websocket = beast::websocket;     // from <boost/beast/websocket.hpp>
 namespace net       = boost::asio;          // from <boost/asio.hpp>
-using tcp           = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
+using unix_fd       = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
+
+std::string getSocketPath(void) {
+    return std::string{[[[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask][0] path] UTF8String]} + "/iTerm2/private/socket";
+}
 
 // Sends a WebSocket message and prints the response
 int demo_main(int argc, const char *argv[]) {
@@ -35,19 +39,20 @@ int demo_main(int argc, const char *argv[]) {
         net::io_context ioc;
 
         // These objects perform our I/O
-        tcp::resolver resolver{ioc};
-        websocket::stream<tcp::socket> ws{ioc};
-
-        // Look up the domain name
-        auto const results = resolver.resolve(host, port);
+        const auto sockPath = getSocketPath();
+        std::cerr << "sockPath: " << sockPath << "\n";
+        auto ep = unix_fd::endpoint{sockPath};
+        websocket::stream<unix_fd::socket> ws{ioc};
+        std::cerr << "ws objctreated" << "\n";
 
         // Make the connection on the IP address we get from a lookup
-        auto ep = net::connect(ws.next_layer(), results);
+        ws.next_layer().connect(ep);
 
         // Update the host_ string. This will provide the value of the
         // Host HTTP header during the WebSocket handshake.
         // See https://tools.ietf.org/html/rfc7230#section-5.4
-        host += ':' + std::to_string(ep.port());
+        // host += ':' + std::to_string(ep.port());
+        host += ":fart";
 
         // Set a decorator to change the User-Agent of the handshake
         ws.set_option(websocket::stream_base::decorator([](websocket::request_type &req) {
@@ -64,8 +69,13 @@ int demo_main(int argc, const char *argv[]) {
         // This buffer will hold the incoming message
         beast::flat_buffer buffer;
 
-        // Read a message into our buffer
-        ws.read(buffer);
+        for (int loopnum = 0; loopnum < 2; ++loopnum) {
+            // Read a message into our buffer
+            ws.read(buffer);
+
+            // The make_printable() function helps print a ConstBufferSequence
+            std::cout << beast::make_printable(buffer.data()) << std::endl;
+        }
 
         // Close the WebSocket connection
         ws.close(websocket::close_code::normal);
