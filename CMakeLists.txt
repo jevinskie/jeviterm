@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(jeviterm C CXX OBJCXX)
+project(jeviterm LANGUAGES C CXX OBJCXX VERSION 0.1.0)
+
+set(PRE_CONFIGURE_FILE "include/jeviterm.h.in")
+set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/jeviterm.h")
+include(cmake/git_watcher.cmake)
 
 set(CMAKE_XCODE_ATTRIBUTE_COMPILER_INDEX_STORE_ENABLE NO)
 
@@ -17,7 +21,7 @@ endif ()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_EXTENSIONS YES)
 
-# add_compile_options(-fsanitize=address -O0 -g)
+# add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
 
 add_subdirectory(lib)

@@ -168,3 +168,22 @@ void doit(void) {
     NSLog(@"Just Do It");
     demo_main("jevitermtest");
 }
+
+__attribute__((visibility("default")))
+const char *jeviterm_version(void) {
+    static std::string res;
+    if (res.empty()) {
+        res += "jeviterm v " JEVITERM_VERSION "\n";
+        if(JEVITERM_GIT_RETRIEVED_STATE) {
+            if(JEVITERM_GIT_IS_DIRTY) res += "WARN: there were uncommitted changes.\n";
+
+            // Print information about the commit.
+            // The format imitates the output from "git log".
+            res += "commit " JEVITERM_GIT_HEAD_SHA1 " (HEAD)\n" \
+                    "Describe: " JEVITERM_GIT_DESCRIBE "\n" \
+                    "Date: " JEVITERM_GIT_COMMIT_DATE_ISO8601;
+        }
+    }
+    return res.c_str();
+}
+
