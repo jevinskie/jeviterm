@@ -1,5 +1,6 @@
 syntax = "proto2";
 option objc_class_prefix = "ITM";
+option optimize_for = CODE_SIZE;
 package iterm2;
 
 // A note on session IDs:
