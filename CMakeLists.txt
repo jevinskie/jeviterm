@@ -1,16 +1,22 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(jeviterm LANGUAGES C CXX OBJCXX VERSION 0.1.0)
+project(jeviterm
+   LANGUAGES C CXX OBJCXX
+   VERSION 0.1.1
+   DESCRIPTION "C++ library to interact with iTerm2 using protobufs and WebSockets"
+   HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
+)
 
 set(PRE_CONFIGURE_FILE "include/jeviterm.h.in")
 set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/jeviterm.h")
 include(cmake/git_watcher.cmake)
 
+# homebrew llvm toolchain hack
 set(CMAKE_XCODE_ATTRIBUTE_COMPILER_INDEX_STORE_ENABLE NO)
 
-option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." ON)
+option(JEVITERM_FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." ON)
 
-if (${FORCE_COLORED_OUTPUT})
+if (${JEVITERM_FORCE_COLORED_OUTPUT})
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
        add_compile_options(-fdiagnostics-color=always)
     elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")

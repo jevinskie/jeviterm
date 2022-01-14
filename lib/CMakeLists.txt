@@ -21,15 +21,9 @@ target_link_options(jeviterm PRIVATE -Wl,-dead_strip)
 target_compile_options(jeviterm PRIVATE -flto=full -fwhole-program-vtables)
 target_link_options(jeviterm PRIVATE -Oz -flto=full)
 
-# why? wrong direction?
-if (OFF)
-set(JEVITERM_RPATH
-    "@loader_path/../lib"
-    ${CMAKE_INSTALL_FULL_LIBDIR}
-)
+set(JEVITERM_INSTALL_NAME_DIR ${CMAKE_INSTALL_FULL_LIBDIR})
 if (DEFINED ENV{HOMEBREW_PREFIX})
-    list(APPEND JEVITERM_RPATH  "@@HOMEBREW_PREFIX@@/opt/jeviterm/lib" $ENV{HOMEBREW_PREFIX}/opt/jeviterm/lib "@@HOMEBREW_PREFIX@@/lib" $ENV{HOMEBREW_PREFIX}/lib)
-endif()
+    set(JEVITERM_INSTALL_NAME_DIR $ENV{HOMEBREW_PREFIX}/opt/jeviterm/lib)
 endif()
 
 set_target_properties(jeviterm PROPERTIES
@@ -38,11 +32,11 @@ set_target_properties(jeviterm PROPERTIES
     CXX_STANDARD_REQUIRED ON
     VISIBILITY_INLINES_HIDDEN ON
     POSITION_INDEPENDENT_CODE ON
-    # INSTALL_RPATH "${JEVITERM_RPATH}"
-    INSTALL_NAME_DIR ${CMAKE_INSTALL_FULL_LIBDIR}
+    INSTALL_NAME_DIR ${JEVITERM_INSTALL_NAME_DIR}
     PUBLIC_HEADER ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h
 )
 
 configure_file(jeviterm.pc.in jeviterm.pc @ONLY) 
 
 install(TARGETS jeviterm)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/jeviterm.pc DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/pkgconfig)
