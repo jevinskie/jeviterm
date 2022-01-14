@@ -24,35 +24,41 @@ struct CookieKey {
     std::string key;
 };
 
-std::optional<CookieKey> getCookieAndKey(std::string clientName) {
-    NSDictionary<NSString *, id> *err = nil;
-    NSAppleScript *get_stuff_as       = [[NSAppleScript alloc]
-        initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
-                                                        @"and key for app named \"%s\"",
-                                                  clientName.c_str()]];
-    NSAppleEventDescriptor *res_evt   = [get_stuff_as executeAndReturnError:&err];
-    if (err) {
-        NSLog(@"AppleScript error: %@", err);
-        return std::nullopt;
+static const std::optional<CookieKey> &getCookieAndKey(std::string clientName, bool force = false) {
+    static std::optional<CookieKey> cookieKey{std::nullopt};
+    if (!cookieKey || force) {
+        NSDictionary<NSString *, id> *err = nil;
+        NSAppleScript *get_stuff_as       = [[NSAppleScript alloc]
+            initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
+                                                            @"and key for app named \"%s\"",
+                                                      clientName.c_str()]];
+        NSAppleEventDescriptor *res_evt   = [get_stuff_as executeAndReturnError:&err];
+        if (err) {
+            NSLog(@"AppleScript error: %@", err);
+            return cookieKey;
+        }
+        NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString:@" "];
+        assert(splitParts.count == 2);
+        cookieKey = CookieKey{.cookie = std::string{splitParts[0].UTF8String},
+                         .key    = std::string{splitParts[1].UTF8String}};
     }
-    NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString:@" "];
-    assert(splitParts.count == 2);
-    return CookieKey{.cookie = std::string{splitParts[0].UTF8String},
-                     .key    = std::string{splitParts[1].UTF8String}};
+    return cookieKey;
 }
 
-std::string getSocketPath(void) {
+static std::string getSocketPath(void) {
     return std::string{[[[NSFileManager.defaultManager
                URLsForDirectory:NSApplicationSupportDirectory
                       inDomains:NSUserDomainMask][0] path] UTF8String]} +
            "/iTerm2/private/socket";
 }
 
-void hexdump(void *buf, std::size_t sz) {
+static void hexdump(void *buf, std::size_t sz) {
     for (const uint8_t *p = (const uint8_t *)buf; p < (const uint8_t *)buf + sz; ++p) {
         std::cerr << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)*p;
     }
 }
+
+
 
 // Sends a WebSocket message and prints the response
 int demo_main(std::string clientName) {

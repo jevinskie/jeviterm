@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 const char *jeviterm_version(void);
+int jeviterm_open_tabs(const char **cmds);
 
 void doit(void);
 
