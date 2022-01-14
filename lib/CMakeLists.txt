@@ -14,12 +14,12 @@ target_include_directories(jeviterm PRIVATE ${Protobuf_INCLUDE_DIRS})
 
 target_link_libraries(jeviterm PRIVATE ${FOUNDATION} ${Protobuf_LIBRARIES})
 
-target_compile_options(jeviterm PRIVATE -Oz -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections)
+# target_compile_options(jeviterm PRIVATE -Oz -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections)
 target_link_options(jeviterm PRIVATE -Wl,-dead_strip)
 
 # womp, womp -fvirtual-function-elimination crashes jumping to nullptr
-target_compile_options(jeviterm PRIVATE -flto=full -fwhole-program-vtables)
-target_link_options(jeviterm PRIVATE -Oz -flto=full)
+# target_compile_options(jeviterm PRIVATE -flto=full -fwhole-program-vtables)
+# target_link_options(jeviterm PRIVATE -Oz -flto=full)
 
 set(JEVITERM_INSTALL_NAME_DIR ${CMAKE_INSTALL_FULL_LIBDIR})
 if (DEFINED ENV{HOMEBREW_PREFIX})
