@@ -6,7 +6,6 @@ extern "C" {
 
 const char *jeviterm_version(void);
 int jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name);
-int jeviterm_open_tabs2(const char **cmds, int same_window, const char *client_name);
 
 #define JEVITERM_NEW_WINDOW_ID (0)
 #define JEVITERM_NONE_WINDOW_ID (-1)

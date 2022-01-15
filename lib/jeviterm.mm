@@ -16,6 +16,20 @@
 
 using namespace std::string_literals;
 
+// AppleScript hack
+__attribute__((constructor))
+void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+    // parts of AppleScript need to be primed on the main thread
+    if (!NSThread.isMainThread) {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [[[NSAppleScript alloc] initWithSource: @"\"\""] executeAndReturnError:nil];
+        });
+    } else {
+        // already on main thread
+        [[[NSAppleScript alloc] initWithSource: @"\"\""] executeAndReturnError:nil];
+    }
+}
+
 namespace jeviterm {
 
 namespace beast     = boost::beast;                  // from <boost/beast.hpp>
@@ -111,9 +125,9 @@ public:
     }
 
     static std::string getSocketPath(void) {
-        return std::string{[[[NSFileManager.defaultManager
+        return std::string{[NSFileManager.defaultManager
                    URLsForDirectory:NSApplicationSupportDirectory
-                          inDomains:NSUserDomainMask][0] path] UTF8String]} +
+                          inDomains:NSUserDomainMask][0].path.UTF8String} +
                "/iTerm2/private/socket";
     }
 
@@ -220,24 +234,6 @@ __attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds,
         std::cerr << "jeviterm_open_tabs error: " << e.what() << "\n";
         return JEVITERM_NONE_WINDOW_ID;
     }
-}
-
-__attribute__((visibility("default"))) int jeviterm_open_tabs2(const char **cmds, int same_window,
-                                                               const char *client_name) {
-    if (!cmds) {
-        return 1;
-    }
-    if (client_name == nullptr) {
-        client_name = "jeviterm";
-    }
-
-    fprintf(stderr, "HELLO spawning gui here\n");
-    static int last_win_id = JEVITERM_NONE_WINDOW_ID;
-    for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
-        const char *cmds_single[] = {*cmdp, NULL};
-        last_win_id = jeviterm_open_tabs(cmds_single, 1, last_win_id, client_name);
-    }
-    return last_win_id;
 }
 
 __attribute__((visibility("default"))) const char *jeviterm_version(void) {
