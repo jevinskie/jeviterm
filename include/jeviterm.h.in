@@ -5,7 +5,10 @@ extern "C" {
 #endif
 
 const char *jeviterm_version(void);
-int jeviterm_open_tabs(const char **cmds, int same_window, const char *client_name);
+int jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name);
+
+#define JEVITERM_NEW_WINDOW_ID (0)
+#define JEVITERM_ERROR_WINDOW_ID (-1)
 
 #ifdef __cplusplus
 } // extern "C"

@@ -25,18 +25,28 @@ using unix_fd = boost::asio::local::stream_protocol; // from <boost/asio/local/s
 
 class iTermRPC {
 public:
-    iTermRPC(std::string client_name)
-        : m_client_name{client_name}, m_ws{m_ioc}, m_ep{getSocketPath()} {
-        m_ws.binary(true);
-        connect();
-    }
-
-    ~iTermRPC() {
-        // FIXME: clean disconnect
-        // disconnect();
+    static iTermRPC &shared_inst(const std::string &client_name) {
+        static iTermRPC the_one_inst{client_name};
+        return the_one_inst;
     }
 
     using window_id_t = std::string;
+
+    int winid_str2int(const window_id_t &winid_str) {
+        const auto idx = std::find(m_win_ids.cbegin(), m_win_ids.cend(), winid_str);
+        if (idx != m_win_ids.cend()) {
+            return std::distance(m_win_ids.cbegin(), idx) + 1; // 1 indexed, 0 reserved for new window
+        }
+        return JEVITERM_ERROR_WINDOW_ID;
+    }
+
+    std::optional<window_id_t> winid_int2str(int winid_int) {
+        // 1 indexed, 0 reserved for new window
+        if (winid_int < 1 || winid_int > m_win_ids.size()) {
+            return std::nullopt;
+        }
+        return m_win_ids[winid_int-1];
+    }
 
     std::optional<window_id_t> create_tab(const char *cmd, const window_id_t *window = nullptr) {
         assert(cmd);
@@ -64,7 +74,9 @@ public:
             !replyMsg.create_tab_response().has_window_id()) {
             return std::nullopt;
         }
-        return {replyMsg.create_tab_response().window_id()};
+        const auto win_id = replyMsg.create_tab_response().window_id();
+        m_win_ids.push_back(win_id);
+        return win_id;
     }
 
     struct CookieKey {
@@ -72,7 +84,7 @@ public:
         std::string key;
     };
 
-    static const std::optional<CookieKey> &getCookieAndKey(std::string clientName,
+    static const std::optional<CookieKey> &getCookieAndKey(const std::string &clientName,
                                                            bool force = false) {
         static std::optional<CookieKey> cookieKey{std::nullopt};
         if (!cookieKey || force) {
@@ -105,6 +117,17 @@ public:
     }
 
 private:
+    iTermRPC(const std::string &client_name)
+        : m_client_name{client_name}, m_ws{m_ioc}, m_ep{getSocketPath()} {
+        m_ws.binary(true);
+        connect();
+    }
+
+    ~iTermRPC() {
+        // FIXME: clean disconnect
+        // disconnect();
+    }
+
     bool connect() {
         const auto cookieKey = getCookieAndKey(m_client_name);
         if (!cookieKey) {
@@ -156,10 +179,11 @@ private:
     }
 
 private:
+    std::string m_client_name;
     net::io_context m_ioc;
     unix_fd::endpoint m_ep;
     websocket::stream<unix_fd::socket> m_ws;
-    std::string m_client_name;
+    std::vector<std::string> m_win_ids; // will not be thread safe
 };
 
 } // namespace jeviterm
@@ -167,8 +191,7 @@ private:
 using namespace jeviterm;
 
 __attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds, int same_window,
-                                                              const char *client_name) {
-    bool good = true;
+                                                              int window_id, const char *client_name) {
     if (!cmds) {
         return 1;
     }
@@ -176,21 +199,24 @@ __attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds,
         client_name = "jeviterm";
     }
     try {
-        iTermRPC rpc{client_name};
+        auto &rpc = iTermRPC::shared_inst(client_name);
         iTermRPC::window_id_t existing_window_id;
+        const auto str_winid = rpc.winid_int2str(window_id);
+        if (str_winid) {
+            existing_window_id = *str_winid;
+        }
+        std::optional<iTermRPC::window_id_t> new_window_id;
         for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
-            const auto new_window_id =
-                rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
-            good &= new_window_id.has_value();
+            new_window_id = rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
             if (new_window_id && same_window) {
                 existing_window_id = *new_window_id;
             }
         }
+        return rpc.winid_str2int(new_window_id ? *new_window_id : "");
     } catch (std::exception const &e) {
         std::cerr << "jeviterm_open_tabs error: " << e.what() << "\n";
-        return 1;
+        return JEVITERM_ERROR_WINDOW_ID;
     }
-    return !good; // 0 on success
 }
 
 __attribute__((visibility("default"))) const char *jeviterm_version(void) {
