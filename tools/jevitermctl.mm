@@ -11,5 +11,6 @@ int main(int argc, const char **argv) {
     const char *cmds[argc];
     cmds[argc - 1] = nullptr;
     memcpy(cmds, argv + 1, (argc - 1) * sizeof(*cmds));
-    return jeviterm_open_tabs(cmds, true, JEVITERM_NEW_WINDOW_ID, "jevitermctl");
+    // return jeviterm_open_tabs(cmds, true, JEVITERM_NEW_WINDOW_ID, "jevitermctl") == JEVITERM_NONE_WINDOW_ID;
+    return jeviterm_open_tabs2(cmds, true, "jevitermctl") == JEVITERM_NONE_WINDOW_ID;
 }

@@ -1,5 +1,6 @@
 #include "jeviterm.h"
 #include "iterm-api.pb.h"
+#include "json.hpp"
 
 #import <Foundation/Foundation.h>
 
@@ -37,7 +38,7 @@ public:
         if (idx != m_win_ids.cend()) {
             return std::distance(m_win_ids.cbegin(), idx) + 1; // 1 indexed, 0 reserved for new window
         }
-        return JEVITERM_ERROR_WINDOW_ID;
+        return JEVITERM_NONE_WINDOW_ID;
     }
 
     std::optional<window_id_t> winid_int2str(int winid_int) {
@@ -169,7 +170,9 @@ private:
         cstCmdProp->set_json_value("\"Yes\"");
         auto cmdProp = ctReqMsg.add_custom_profile_properties();
         cmdProp->set_key("Command");
-        cmdProp->set_json_value("\"" + cmd + "\"");
+        // nlohmann::json json_cmd_str = cmd;
+        nlohmann::json json_cmd_str = cmd;
+        cmdProp->set_json_value(json_cmd_str.dump()); // serialize/escape command string
         if (window) {
             ctReqMsg.set_window_id(*window);
         }
@@ -215,8 +218,26 @@ __attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds,
         return rpc.winid_str2int(new_window_id ? *new_window_id : "");
     } catch (std::exception const &e) {
         std::cerr << "jeviterm_open_tabs error: " << e.what() << "\n";
-        return JEVITERM_ERROR_WINDOW_ID;
+        return JEVITERM_NONE_WINDOW_ID;
     }
+}
+
+__attribute__((visibility("default"))) int jeviterm_open_tabs2(const char **cmds, int same_window,
+                                                               const char *client_name) {
+    if (!cmds) {
+        return 1;
+    }
+    if (client_name == nullptr) {
+        client_name = "jeviterm";
+    }
+
+    fprintf(stderr, "HELLO spawning gui here\n");
+    static int last_win_id = JEVITERM_NONE_WINDOW_ID;
+    for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
+        const char *cmds_single[] = {*cmdp, NULL};
+        last_win_id = jeviterm_open_tabs(cmds_single, 1, last_win_id, client_name);
+    }
+    return last_win_id;
 }
 
 __attribute__((visibility("default"))) const char *jeviterm_version(void) {
