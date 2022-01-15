@@ -1,0 +1,163 @@
+diff --git a/chardev/char-pty.c b/chardev/char-pty.c
+index a2d1e7c985..2358afcf12 100644
+--- a/chardev/char-pty.c
++++ b/chardev/char-pty.c
+@@ -35,6 +35,10 @@
+ #include "chardev/char-io.h"
+ #include "qom/object.h"
+ 
++#ifdef CONFIG_JEVITERM
++#include <jeviterm.h>
++#endif
++
+ struct PtyChardev {
+     Chardev parent;
+     QIOChannel *ioc;
+@@ -227,6 +231,19 @@ static void char_pty_open(Chardev *chr,
+     g_free(name);
+     s->timer_src = NULL;
+     *be_opened = false;
++
++#ifdef CONFIG_JEVITERM
++    if (backend->u.pty.data->spawngui) {
++        static int last_win_id = JEVITERM_NONE_WINDOW_ID;
++        const char *cmd = g_strdup_printf("/usr/bin/env bash -l -c \"/opt/homebrew/opt/picocom/bin/picocom -q %s\"", pty_name);
++        assert(cmd);
++        const char *cmds[] = {cmd, NULL};
++        const int new_win_id = jeviterm_open_tabs(cmds, 1, last_win_id, "qemu");
++        last_win_id = new_win_id;
++        g_free((void *)cmd);
++    }
++#endif
++
+ }
+ 
+ static void char_pty_class_init(ObjectClass *oc, void *data)
+diff --git a/chardev/char.c b/chardev/char.c
+index 0169d8dde4..d21a7c70c1 100644
+--- a/chardev/char.c
++++ b/chardev/char.c
+@@ -501,6 +501,8 @@ void qemu_chr_parse_common(QemuOpts *opts, ChardevCommon *backend)
+ 
+     backend->has_logappend = true;
+     backend->logappend = qemu_opt_get_bool(opts, "logappend", false);
++
++    backend->spawngui = qemu_opt_get_bool(opts, "spawngui", false);
+ }
+ 
+ static const ChardevClass *char_get_class(const char *driver, Error **errp)
+@@ -943,6 +945,10 @@ QemuOptsList qemu_chardev_opts = {
+             .name = "abstract",
+             .type = QEMU_OPT_BOOL,
+ #endif
++        },{
++            .name = "spawngui",
++            .type = QEMU_OPT_BOOL,
++            .def_value_str = "off",
+         },
+         { /* end of list */ }
+     },
+diff --git a/meson.build b/meson.build
+index 886f0a9343..cf3780a80f 100644
+--- a/meson.build
++++ b/meson.build
+@@ -494,6 +494,13 @@ if cocoa.found() and get_option('gtk').enabled()
+   error('Cocoa and GTK+ cannot be enabled at the same time')
+ endif
+ 
++jeviterm = not_found
++if not get_option('jeviterm').auto()
++  jeviterm = dependency('jeviterm', version: '>=0.1.1',
++                        required: get_option('jeviterm'),
++                        method: 'pkg-config')
++endif
++
+ seccomp = not_found
+ if not get_option('seccomp').auto() or have_system or have_tools
+   seccomp = dependency('libseccomp', version: '>=2.3.0',
+@@ -1453,6 +1460,7 @@ config_host_data.set('HOST_' + host_arch.to_upper(), 1)
+ config_host_data.set('CONFIG_ATTR', libattr.found())
+ config_host_data.set('CONFIG_BRLAPI', brlapi.found())
+ config_host_data.set('CONFIG_COCOA', cocoa.found())
++config_host_data.set('CONFIG_JEVITERM', jeviterm.found())
+ config_host_data.set('CONFIG_FUZZ', get_option('fuzzing'))
+ config_host_data.set('CONFIG_GCOV', get_option('b_coverage'))
+ config_host_data.set('CONFIG_LIBUDEV', libudev.found())
+@@ -2843,7 +2851,7 @@ qmp = declare_dependency(link_whole: [libqmp])
+ 
+ libchardev = static_library('chardev', chardev_ss.sources() + genh,
+                             name_suffix: 'fa',
+-                            dependencies: [gnutls],
++                            dependencies: [gnutls, jeviterm],
+                             build_by_default: false)
+ 
+ chardev = declare_dependency(link_whole: libchardev)
+@@ -3405,6 +3413,7 @@ summary(summary_info, bool_yn: true, section: 'Crypto')
+ summary_info = {}
+ if targetos == 'darwin'
+   summary_info += {'Cocoa support':   cocoa}
++  summary_info += {'jeviterm support': jeviterm}
+ endif
+ summary_info += {'SDL support':       sdl}
+ summary_info += {'SDL image support': sdl_image}
+diff --git a/meson_options.txt b/meson_options.txt
+index 921967eddb..02b3820944 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -83,6 +83,8 @@ option('bpf', type : 'feature', value : 'auto',
+         description: 'eBPF support')
+ option('cocoa', type : 'feature', value : 'auto',
+        description: 'Cocoa user interface (macOS only)')
++option('jeviterm', type : 'feature', value : 'auto',
++       description: 'jeviterm-based iTerm2 integration (macOS only)')
+ option('curl', type : 'feature', value : 'auto',
+        description: 'CURL block device driver')
+ option('glusterfs', type : 'feature', value : 'auto',
+diff --git a/qapi/char.json b/qapi/char.json
+index 7b42151575..8ff7177042 100644
+--- a/qapi/char.json
++++ b/qapi/char.json
+@@ -209,7 +209,8 @@
+ ##
+ { 'struct': 'ChardevCommon',
+   'data': { '*logfile': 'str',
+-            '*logappend': 'bool' } }
++            '*logappend': 'bool',
++            '*spawngui': 'bool'} }
+ 
+ ##
+ # @ChardevFile:
+diff --git a/qemu-options.hx b/qemu-options.hx
+index a51fe89149..0f88ea4320 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -3249,7 +3249,7 @@ DEF("chardev", HAS_ARG, QEMU_OPTION_chardev,
+     "-chardev console,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
+     "-chardev serial,id=id,path=path[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
+ #else
+-    "-chardev pty,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
++    "-chardev pty,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off][,spawngui=on|off]\n"
+     "-chardev stdio,id=id[,mux=on|off][,signal=on|off][,logfile=PATH][,logappend=on|off]\n"
+ #endif
+ #ifdef CONFIG_BRLAPI
+diff --git a/scripts/meson-buildoptions.sh b/scripts/meson-buildoptions.sh
+index 50bd7bed4d..1aba418a4e 100644
+--- a/scripts/meson-buildoptions.sh
++++ b/scripts/meson-buildoptions.sh
+@@ -48,6 +48,7 @@ meson_options_help() {
+   printf "%s\n" '  hvf             HVF acceleration support'
+   printf "%s\n" '  iconv           Font glyph conversion support'
+   printf "%s\n" '  jack            JACK sound support'
++  printf "%s\n" '  jeviterm        jeviterm-based iTerm2 integration (macOS only)'
+   printf "%s\n" '  kvm             KVM acceleration support'
+   printf "%s\n" '  l2tpv3          l2tpv3 network backend support'
+   printf "%s\n" '  libdaxctl       libdaxctl support'
+@@ -169,6 +170,8 @@ _meson_option_parse() {
+     --disable-install-blobs) printf "%s" -Dinstall_blobs=false ;;
+     --enable-jack) printf "%s" -Djack=enabled ;;
+     --disable-jack) printf "%s" -Djack=disabled ;;
++    --enable-jeviterm) printf "%s" -Djeviterm=enabled ;;
++    --disable-jeviterm) printf "%s" -Djeviterm=disabled ;;
+     --enable-kvm) printf "%s" -Dkvm=enabled ;;
+     --disable-kvm) printf "%s" -Dkvm=disabled ;;
+     --enable-l2tpv3) printf "%s" -Dl2tpv3=enabled ;;
