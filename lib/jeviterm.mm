@@ -4,7 +4,10 @@
 
 #import <Foundation/Foundation.h>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #include <boost/asio/connect.hpp>
+#pragma clang diagnostic pop
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
@@ -17,16 +20,15 @@
 using namespace std::string_literals;
 
 // AppleScript hack
-__attribute__((constructor))
-void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+__attribute__((constructor)) void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
     // parts of AppleScript need to be primed on the main thread
     if (!NSThread.isMainThread) {
         dispatch_sync(dispatch_get_main_queue(), ^{
-            [[[NSAppleScript alloc] initWithSource: @"\"\""] executeAndReturnError:nil];
+          [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
         });
     } else {
         // already on main thread
-        [[[NSAppleScript alloc] initWithSource: @"\"\""] executeAndReturnError:nil];
+        [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
     }
 }
 
@@ -50,7 +52,8 @@ public:
     int winid_str2int(const window_id_t &winid_str) {
         const auto idx = std::find(m_win_ids.cbegin(), m_win_ids.cend(), winid_str);
         if (idx != m_win_ids.cend()) {
-            return std::distance(m_win_ids.cbegin(), idx) + 1; // 1 indexed, 0 reserved for new window
+            return std::distance(m_win_ids.cbegin(), idx) +
+                   1; // 1 indexed, 0 reserved for new window
         }
         return JEVITERM_NONE_WINDOW_ID;
     }
@@ -60,7 +63,7 @@ public:
         if (winid_int < 1 || winid_int > m_win_ids.size()) {
             return std::nullopt;
         }
-        return m_win_ids[winid_int-1];
+        return m_win_ids[winid_int - 1];
     }
 
     std::optional<window_id_t> create_tab(const char *cmd, const window_id_t *window = nullptr) {
@@ -126,8 +129,9 @@ public:
 
     static std::string getSocketPath(void) {
         return std::string{[NSFileManager.defaultManager
-                   URLsForDirectory:NSApplicationSupportDirectory
-                          inDomains:NSUserDomainMask][0].path.UTF8String} +
+                               URLsForDirectory:NSApplicationSupportDirectory
+                                      inDomains:NSUserDomainMask][0]
+                               .path.UTF8String} +
                "/iTerm2/private/socket";
     }
 
@@ -184,7 +188,6 @@ private:
         cstCmdProp->set_json_value("\"Yes\"");
         auto cmdProp = ctReqMsg.add_custom_profile_properties();
         cmdProp->set_key("Command");
-        // nlohmann::json json_cmd_str = cmd;
         nlohmann::json json_cmd_str = cmd;
         cmdProp->set_json_value(json_cmd_str.dump()); // serialize/escape command string
         if (window) {
@@ -207,8 +210,8 @@ private:
 
 using namespace jeviterm;
 
-__attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds, int same_window,
-                                                              int window_id, const char *client_name) {
+__attribute__((visibility("default"))) int
+jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name) {
     if (!cmds) {
         return 1;
     }
@@ -224,7 +227,8 @@ __attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds,
         }
         std::optional<iTermRPC::window_id_t> new_window_id;
         for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
-            new_window_id = rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
+            new_window_id =
+                rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
             if (new_window_id && same_window) {
                 existing_window_id = *new_window_id;
             }

@@ -7,9 +7,45 @@ include(GNUInstallDirs)
 
 find_package(Protobuf REQUIRED)
 
-add_library(jeviterm SHARED jeviterm.mm ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h iterm-api.pb.cpp iterm-api.pb.h)
+cmake_policy(SET CMP0135 NEW)
+include(FetchContent)
 
-target_include_directories(jeviterm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../include)
+FetchContent_Declare(
+    iterm2-protobuf
+    FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
+    DOWNLOAD_NO_EXTRACT TRUE
+    URL https://raw.githubusercontent.com/gnachman/iTerm2/master/proto/api.proto
+)
+FetchContent_MakeAvailable(iterm2-protobuf)
+FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
+
+FetchContent_Declare(
+    json-hpp
+    FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
+    DOWNLOAD_NO_EXTRACT TRUE
+    URL https://github.com/nlohmann/json/raw/develop/single_include/nlohmann/json.hpp
+)
+FetchContent_MakeAvailable(json-hpp)
+FetchContent_GetProperties(json-hpp SOURCE_DIR JSON_HPP_SRC_DIR)
+
+
+add_custom_command(OUTPUT
+    ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    COMMAND ${CMAKE_COMMAND} -E copy ${ITERM2_PROTOBUF_SRC_DIR}/api.proto ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/api.proto
+)
+
+add_custom_command(OUTPUT
+    ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.cc
+    ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.h
+    COMMAND protoc --cpp_out=code_size:${CMAKE_CURRENT_BINARY_DIR} --proto_path ${ITERM2_PROTOBUF_SRC_DIR} ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+)
+
+
+add_library(jeviterm SHARED jeviterm.mm ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.cc ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.h)
+
+target_include_directories(jeviterm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../include ${CMAKE_CURRENT_BINARY_DIR} ${JSON_HPP_SRC_DIR})
 target_include_directories(jeviterm PRIVATE ${Protobuf_INCLUDE_DIRS})
 
 target_link_libraries(jeviterm PRIVATE ${FOUNDATION} ${Protobuf_LIBRARIES})
