@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 const char *jeviterm_version(void);
+void jeviterm_set_iterm2_socket_path(const char *path);
 int jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name);
 
 #define JEVITERM_NEW_WINDOW_ID (0)

@@ -11,6 +11,7 @@
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
+#include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -39,6 +40,8 @@ namespace http      = beast::http;                   // from <boost/beast/http.h
 namespace websocket = beast::websocket;              // from <boost/beast/websocket.hpp>
 namespace net       = boost::asio;                   // from <boost/asio.hpp>
 using unix_fd = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
+
+static std::string g_socket_path_override;
 
 class iTermRPC {
 public:
@@ -128,11 +131,27 @@ public:
     }
 
     static std::string getSocketPath(void) {
-        return std::string{[NSFileManager.defaultManager
-                               URLsForDirectory:NSApplicationSupportDirectory
-                                      inDomains:NSUserDomainMask][0]
-                               .path.UTF8String} +
-               "/iTerm2/private/socket";
+        if (g_socket_path_override.empty()) {
+            const auto path = std::string{[NSFileManager.defaultManager
+                                              URLsForDirectory:NSApplicationSupportDirectory
+                                                     inDomains:NSUserDomainMask][0]
+                                              .path.UTF8String} +
+                              "/iTerm2/private/socket";
+            const auto sudo_user_nsstring = NSProcessInfo.processInfo.environment[@"SUDO_USER"];
+            if (sudo_user_nsstring) {
+                const auto cur_home = std::string{NSHomeDirectory().UTF8String};
+                const auto sudo_user_home =
+                    std::string{NSHomeDirectoryForUser(sudo_user_nsstring).UTF8String};
+                auto modified_path = path;
+                modified_path.replace(0, cur_home.size(), sudo_user_home);
+                printf("modified_path: %s\n", modified_path.c_str());
+                return modified_path;
+            } else {
+                return path;
+            }
+        } else {
+            return g_socket_path_override;
+        }
     }
 
 private:
@@ -209,6 +228,10 @@ private:
 } // namespace jeviterm
 
 using namespace jeviterm;
+
+__attribute__((visibility("default"))) void jeviterm_set_iterm2_socket_path(const char *path) {
+    jeviterm::g_socket_path_override = path;
+}
 
 __attribute__((visibility("default"))) int
 jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name) {
