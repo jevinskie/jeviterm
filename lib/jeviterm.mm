@@ -24,7 +24,7 @@
 using namespace std::string_literals;
 
 // AppleScript hack
-void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+__attribute__((constructor)) void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
     static bool already_done = false;
     if (already_done) {
         return;
@@ -125,7 +125,6 @@ public:
                                                      @"and key for app named \"%s\"",
                                                clientName.c_str()]];
             std::cerr << "before prime\n";
-            run_CurrentThreadIsMainOrCooperative_on_main_thread();
             std::cerr << "after prime\n";
             std::cerr << "before as exec\n";
             NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
@@ -258,6 +257,8 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
         client_name = "jeviterm";
     }
     try {
+        // call this to stash the cookie/key because AppleScript doesn't like to run after forking?
+        iTermRPC::getCookieAndKey(client_name);
         const auto sudo_uid_nsstring = NSProcessInfo.processInfo.environment[@"SUDO_UID"];
         pid_t child_pid;
         if (sudo_uid_nsstring) {
@@ -291,7 +292,6 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
                                             "couldn't write new window id from child"};
                 }
-                usleep(100 * 1'000'000);
                 exit(0);
             } else {
                 // this is parent
@@ -310,7 +310,12 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
                                             "couldn't read new window id from parent"};
                 }
-                if (waitpid(child_pid, &child_status, 0) == -1) {
+                int waitpid_res;
+                do {
+                    errno       = 0;
+                    waitpid_res = waitpid(child_pid, &child_status, 0);
+                } while (waitpid_res == -1 && (errno == EAGAIN || errno == EINTR));
+                if (waitpid_res == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
                                             strerror(errno)};
                 }
