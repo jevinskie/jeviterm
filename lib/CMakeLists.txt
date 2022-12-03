@@ -1,11 +1,10 @@
-find_library(FOUNDATION Foundation)
-if (NOT FOUNDATION)
-    message(FATAL_ERROR "Foundation not found")
-endif()
-
 include(GNUInstallDirs)
 
-find_package(Protobuf REQUIRED)
+# find_package(Protobuf REQUIRED)
+include(../3rdparty/protobuf/cmake/protobuf-generate.cmake)
+
+find_package(Boost CONFIG REQUIRED headers)
+set_target_properties(Boost::headers PROPERTIES IMPORTED_GLOBAL ON)
 
 cmake_policy(SET CMP0135 NEW)
 include(FetchContent)
@@ -38,17 +37,24 @@ add_custom_command(OUTPUT
 add_custom_command(OUTPUT
     ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.cc
     ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.h
-    COMMAND protoc --cpp_out=code_size:${CMAKE_CURRENT_BINARY_DIR} --proto_path ${ITERM2_PROTOBUF_SRC_DIR} ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    COMMAND $<TARGET_FILE:protobuf::protoc> --cpp_out=code_size:${CMAKE_CURRENT_BINARY_DIR} --proto_path ${protobuf_SOURCE_DIR}/src --proto_path ${ITERM2_PROTOBUF_SRC_DIR} ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
     DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
 )
 
+add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
+target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
+protobuf_generate(
+    TARGET iterm-api-proto
+    IMPORT_DIRS ${ITERM2_PROTOBUF_SRC_DIR}
+    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-add_library(jeviterm SHARED jeviterm.mm ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.cc ${CMAKE_CURRENT_BINARY_DIR}/iterm-api.pb.h)
+
+add_library(jeviterm SHARED jeviterm.mm ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h)
 
 target_include_directories(jeviterm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../include ${CMAKE_CURRENT_BINARY_DIR} ${JSON_HPP_SRC_DIR})
 target_include_directories(jeviterm PRIVATE ${Protobuf_INCLUDE_DIRS})
 
-target_link_libraries(jeviterm PRIVATE ${FOUNDATION} ${Protobuf_LIBRARIES})
+target_link_libraries(jeviterm PRIVATE iterm-api-proto Boost::headers "-framework Foundation" ${Protobuf_LIBRARIES})
 
 target_compile_options(jeviterm PRIVATE -Oz -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections)
 target_link_options(jeviterm PRIVATE -Wl,-dead_strip)

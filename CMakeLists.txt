@@ -30,6 +30,7 @@ set(CMAKE_CXX_EXTENSIONS YES)
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
 
+add_subdirectory(3rdparty)
 add_subdirectory(lib)
 add_subdirectory(tools)
 
