@@ -1,7 +1,7 @@
 include(GNUInstallDirs)
 
 # find_package(Protobuf REQUIRED)
-include(../3rdparty/protobuf/cmake/protobuf-generate.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protobuf/cmake/protobuf-generate.cmake)
 
 find_package(Boost CONFIG REQUIRED headers)
 set_target_properties(Boost::headers PROPERTIES IMPORTED_GLOBAL ON)
