@@ -11,26 +11,37 @@
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
-#include <cstdio>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <system_error>
+#include <unistd.h>
 
 using namespace std::string_literals;
 
 // AppleScript hack
-__attribute__((constructor)) void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+    static bool already_done = false;
+    if (already_done) {
+        return;
+    }
     // parts of AppleScript need to be primed on the main thread
     if (!NSThread.isMainThread) {
+        std::cerr << "prime from not main thread\n";
         dispatch_sync(dispatch_get_main_queue(), ^{
           [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
         });
     } else {
         // already on main thread
+        std::cerr << "prime from main thread\n";
         [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
     }
+    already_done = true;
+    std::cerr << "prime done!\n";
 }
 
 namespace jeviterm {
@@ -40,8 +51,6 @@ namespace http      = beast::http;                   // from <boost/beast/http.h
 namespace websocket = beast::websocket;              // from <boost/beast/websocket.hpp>
 namespace net       = boost::asio;                   // from <boost/asio.hpp>
 using unix_fd = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
-
-static std::string g_socket_path_override;
 
 class iTermRPC {
 public:
@@ -115,7 +124,12 @@ public:
                     [NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
                                                      @"and key for app named \"%s\"",
                                                clientName.c_str()]];
+            std::cerr << "before prime\n";
+            run_CurrentThreadIsMainOrCooperative_on_main_thread();
+            std::cerr << "after prime\n";
+            std::cerr << "before as exec\n";
             NSAppleEventDescriptor *res_evt   = [get_stuff_as executeAndReturnError:&err];
+            std::cerr << "after as exec\n";
             if (err) {
                 std::cerr << "jeviterm AppleScript error: " <<
                     [NSString stringWithFormat:@"%@", err].UTF8String << "\n";
@@ -131,27 +145,11 @@ public:
     }
 
     static std::string getSocketPath(void) {
-        if (g_socket_path_override.empty()) {
-            const auto path = std::string{[NSFileManager.defaultManager
-                                              URLsForDirectory:NSApplicationSupportDirectory
-                                                     inDomains:NSUserDomainMask][0]
-                                              .path.UTF8String} +
-                              "/iTerm2/private/socket";
-            const auto sudo_user_nsstring = NSProcessInfo.processInfo.environment[@"SUDO_USER"];
-            if (sudo_user_nsstring) {
-                const auto cur_home = std::string{NSHomeDirectory().UTF8String};
-                const auto sudo_user_home =
-                    std::string{NSHomeDirectoryForUser(sudo_user_nsstring).UTF8String};
-                auto modified_path = path;
-                modified_path.replace(0, cur_home.size(), sudo_user_home);
-                printf("modified_path: %s\n", modified_path.c_str());
-                return modified_path;
-            } else {
-                return path;
-            }
-        } else {
-            return g_socket_path_override;
-        }
+        return std::string{[NSFileManager.defaultManager
+                               URLsForDirectory:NSApplicationSupportDirectory
+                                      inDomains:NSUserDomainMask][0]
+                               .path.UTF8String} +
+               "/iTerm2/private/socket";
     }
 
 private:
@@ -167,11 +165,13 @@ private:
     }
 
     bool connect() {
+        std::cerr << "connect\n";
         const auto cookieKey = getCookieAndKey(m_client_name);
         if (!cookieKey) {
             std::cerr << "failed to get cookie and key from AppleScript\n";
             return false;
         }
+        std::cerr << "got cookie and key\n";
 
         boost::beast::get_lowest_layer(m_ws).connect(m_ep);
 
@@ -229,8 +229,24 @@ private:
 
 using namespace jeviterm;
 
-__attribute__((visibility("default"))) void jeviterm_set_iterm2_socket_path(const char *path) {
-    jeviterm::g_socket_path_override = path;
+static int open_tabs_helper(const char **cmds, int same_window, int window_id,
+                            const char *client_name) {
+    auto &rpc = iTermRPC::shared_inst(client_name);
+    std::cerr << "got rpc shared inst\n";
+    iTermRPC::window_id_t existing_window_id;
+    const auto str_winid = rpc.winid_int2str(window_id);
+    if (str_winid) {
+        existing_window_id = *str_winid;
+    }
+    std::optional<iTermRPC::window_id_t> new_window_id;
+    for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
+        new_window_id =
+            rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
+        if (new_window_id && same_window) {
+            existing_window_id = *new_window_id;
+        }
+    }
+    return rpc.winid_str2int(new_window_id ? *new_window_id : "");
 }
 
 __attribute__((visibility("default"))) int
@@ -242,21 +258,67 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
         client_name = "jeviterm";
     }
     try {
-        auto &rpc = iTermRPC::shared_inst(client_name);
-        iTermRPC::window_id_t existing_window_id;
-        const auto str_winid = rpc.winid_int2str(window_id);
-        if (str_winid) {
-            existing_window_id = *str_winid;
-        }
-        std::optional<iTermRPC::window_id_t> new_window_id;
-        for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
-            new_window_id =
-                rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
-            if (new_window_id && same_window) {
-                existing_window_id = *new_window_id;
+        const auto sudo_uid_nsstring = NSProcessInfo.processInfo.environment[@"SUDO_UID"];
+        pid_t child_pid;
+        if (sudo_uid_nsstring) {
+            const auto sudo_uid = std::stoi(std::string{sudo_uid_nsstring.UTF8String});
+            int pipefd[2];
+            if (pipe(pipefd) == -1) {
+                throw std::system_error{std::error_code(errno, std::generic_category()),
+                                        strerror(errno)};
             }
+            child_pid = fork();
+            if (child_pid == -1) {
+                throw std::system_error{std::error_code(errno, std::generic_category()),
+                                        strerror(errno)};
+            }
+            if (!child_pid) {
+                // this is child
+                std::cerr << "in child pid: " << getpid() << "\n";
+                if (seteuid(sudo_uid) == -1) {
+                    throw std::system_error{std::error_code(errno, std::generic_category()),
+                                            strerror(errno)};
+                }
+                std::cerr << "child before open_tabs_helper\n";
+                const auto new_win_id = open_tabs_helper(cmds, same_window, window_id, client_name);
+                std::cerr << "child new_win_id: " << new_win_id << "\n";
+                const auto write_res  = write(pipefd[1], &new_win_id, sizeof(new_win_id));
+                std::cerr << "child write_res: " << write_res << "\n";
+                if (write_res == -1) {
+                    throw std::system_error{std::error_code(errno, std::generic_category()),
+                                            strerror(errno)};
+                } else if (write_res != sizeof(new_win_id)) {
+                    throw std::system_error{std::error_code(EPIPE, std::generic_category()),
+                                          "couldn't write new window id from child"};
+                }
+                usleep(100 * 1'000'000);
+                exit(0);
+            } else {
+                // this is parent
+                int child_status;
+                int new_win_id;
+                int read_res;
+                do {
+                    errno = 0;
+                    read_res = read(pipefd[0], &new_win_id, sizeof(new_win_id));
+                } while (read_res == -1 && (errno == EAGAIN || errno == EINTR));
+                std::cerr << "read finished id: " << new_win_id << " res: " << read_res << "\n";
+                if (read_res == -1) {
+                    throw std::system_error{std::error_code(errno, std::generic_category()),
+                                            strerror(errno)};
+                } else if (read_res != sizeof(new_win_id)) {
+                    throw std::system_error{std::error_code(EPIPE, std::generic_category()),
+                                          "couldn't read new window id from parent"};
+                }
+                if (waitpid(child_pid, &child_status, 0) == -1) {
+                    throw std::system_error{std::error_code(errno, std::generic_category()),
+                                            strerror(errno)};
+                }
+                return new_win_id;
+            }
+        } else {
+            return open_tabs_helper(cmds, same_window, window_id, client_name);
         }
-        return rpc.winid_str2int(new_window_id ? *new_window_id : "");
     } catch (std::exception const &e) {
         std::cerr << "jeviterm_open_tabs error: " << e.what() << "\n";
         return JEVITERM_NONE_WINDOW_ID;
