@@ -128,7 +128,7 @@ public:
             run_CurrentThreadIsMainOrCooperative_on_main_thread();
             std::cerr << "after prime\n";
             std::cerr << "before as exec\n";
-            NSAppleEventDescriptor *res_evt   = [get_stuff_as executeAndReturnError:&err];
+            NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
             std::cerr << "after as exec\n";
             if (err) {
                 std::cerr << "jeviterm AppleScript error: " <<
@@ -282,14 +282,14 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                 std::cerr << "child before open_tabs_helper\n";
                 const auto new_win_id = open_tabs_helper(cmds, same_window, window_id, client_name);
                 std::cerr << "child new_win_id: " << new_win_id << "\n";
-                const auto write_res  = write(pipefd[1], &new_win_id, sizeof(new_win_id));
+                const auto write_res = write(pipefd[1], &new_win_id, sizeof(new_win_id));
                 std::cerr << "child write_res: " << write_res << "\n";
                 if (write_res == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
                                             strerror(errno)};
                 } else if (write_res != sizeof(new_win_id)) {
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
-                                          "couldn't write new window id from child"};
+                                            "couldn't write new window id from child"};
                 }
                 usleep(100 * 1'000'000);
                 exit(0);
@@ -299,7 +299,7 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                 int new_win_id;
                 int read_res;
                 do {
-                    errno = 0;
+                    errno    = 0;
                     read_res = read(pipefd[0], &new_win_id, sizeof(new_win_id));
                 } while (read_res == -1 && (errno == EAGAIN || errno == EINTR));
                 std::cerr << "read finished id: " << new_win_id << " res: " << read_res << "\n";
@@ -308,7 +308,7 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                                             strerror(errno)};
                 } else if (read_res != sizeof(new_win_id)) {
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
-                                          "couldn't read new window id from parent"};
+                                            "couldn't read new window id from parent"};
                 }
                 if (waitpid(child_pid, &child_status, 0) == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
