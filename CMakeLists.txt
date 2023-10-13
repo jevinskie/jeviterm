@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(jeviterm
    LANGUAGES CXX OBJCXX
-   VERSION 0.1.3
+   VERSION 0.1.4
    DESCRIPTION "C++/Objective-C++ library with a C API to interact with iTerm2 using protobufs and WebSockets"
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )

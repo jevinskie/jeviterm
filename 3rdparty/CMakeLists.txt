@@ -63,10 +63,16 @@ add_custom_command(OUTPUT
     DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/api.proto
 )
 
+add_custom_command(OUTPUT
+    ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
+)
+
 add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
 target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
 target_include_directories(iterm-api-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto)
 protobuf_generate(
     TARGET iterm-api-proto
     IMPORT_DIRS ${ITERM2_PROTOBUF_SRC_DIR}
-    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto)
+    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
+    DEPENDENCIES ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto)
