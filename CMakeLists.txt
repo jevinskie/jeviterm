@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(jeviterm
-   LANGUAGES C CXX OBJCXX
-   VERSION 0.1.1
-   DESCRIPTION "C++ library to interact with iTerm2 using protobufs and WebSockets"
+   LANGUAGES CXX OBJCXX
+   VERSION 0.1.2
+   DESCRIPTION "C++/Objective-C++ library with a C API to interact with iTerm2 using protobufs and WebSockets"
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )
 
@@ -16,7 +16,17 @@ set(CMAKE_XCODE_ATTRIBUTE_COMPILER_INDEX_STORE_ENABLE NO)
 
 option(JEVITERM_FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." ON)
 
-if (${JEVITERM_FORCE_COLORED_OUTPUT})
+if (DEFINED ENV{HOMEBREW_PREFIX})
+   set(JEVITERM_HOMEBREW_DEPS_DEFAULT ON)
+else()
+   set(JEVITERM_HOMEBREW_DEPS_DEFAULT OFF)
+endif()
+
+option(JEVITERM_HOMEBREW_DEPS "Use homebrew for dependencies." ${JEVITERM_HOMEBREW_DEPS_DEFAULT})
+
+option(JEVITERM_DETERMINISTIC "Use versioned dependencies instead of latest git HEAD." OFF)
+
+if (JEVITERM_FORCE_COLORED_OUTPUT)
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
        add_compile_options(-fdiagnostics-color=always)
     elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
@@ -24,8 +34,8 @@ if (${JEVITERM_FORCE_COLORED_OUTPUT})
     endif ()
 endif ()
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_EXTENSIONS YES)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)

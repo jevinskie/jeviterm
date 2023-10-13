@@ -1,4 +1,5 @@
-build/
+# CMake build
+/build/
 
 # IDA Pro Runtime temporary file
 *.id0

@@ -10,8 +10,9 @@ target_link_options(jevitermctl PRIVATE -Wl,-rpath,@loader_path/../lib)
 
 set_target_properties(jevitermctl PROPERTIES
     CXX_STANDARD 17
-    CXX_VISIBILITY_PRESET hidden
+    CXX_EXTENSIONS OFF
     CXX_STANDARD_REQUIRED ON
+    CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
 )
 
