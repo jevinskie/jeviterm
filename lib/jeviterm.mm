@@ -1,6 +1,5 @@
 #include "jeviterm.h"
 #include "iterm-api.pb.h"
-#include <json.hpp>
 
 #import <Foundation/Foundation.h>
 
@@ -16,6 +15,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -31,17 +31,17 @@ __attribute__((constructor)) void run_CurrentThreadIsMainOrCooperative_on_main_t
     }
     // parts of AppleScript need to be primed on the main thread
     if (!NSThread.isMainThread) {
-        std::cerr << "prime from not main thread\n";
+        // std::cerr << "prime from not main thread\n";
         dispatch_sync(dispatch_get_main_queue(), ^{
           [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
         });
     } else {
         // already on main thread
-        std::cerr << "prime from main thread\n";
+        // std::cerr << "prime from main thread\n";
         [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
     }
     already_done = true;
-    std::cerr << "prime done!\n";
+    // std::cerr << "prime done!\n";
 }
 
 namespace jeviterm {
@@ -124,11 +124,11 @@ public:
                     [NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
                                                      @"and key for app named \"%s\"",
                                                clientName.c_str()]];
-            std::cerr << "before prime\n";
-            std::cerr << "after prime\n";
-            std::cerr << "before as exec\n";
+            // std::cerr << "before prime\n";
+            // std::cerr << "after prime\n";
+            // std::cerr << "before as exec\n";
             NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
-            std::cerr << "after as exec\n";
+            // std::cerr << "after as exec\n";
             if (err) {
                 std::cerr << "jeviterm AppleScript error: " <<
                     [NSString stringWithFormat:@"%@", err].UTF8String << "\n";
@@ -164,13 +164,13 @@ private:
     }
 
     bool connect() {
-        std::cerr << "connect\n";
+        // std::cerr << "connect\n";
         const auto cookieKey = getCookieAndKey(m_client_name);
         if (!cookieKey) {
             std::cerr << "failed to get cookie and key from AppleScript\n";
             return false;
         }
-        std::cerr << "got cookie and key\n";
+        // std::cerr << "got cookie and key\n";
 
         boost::beast::get_lowest_layer(m_ws).connect(m_ep);
 
@@ -231,7 +231,7 @@ using namespace jeviterm;
 static int open_tabs_helper(const char **cmds, int same_window, int window_id,
                             const char *client_name) {
     auto &rpc = iTermRPC::shared_inst(client_name);
-    std::cerr << "got rpc shared inst\n";
+    // std::cerr << "got rpc shared inst\n";
     iTermRPC::window_id_t existing_window_id;
     const auto str_winid = rpc.winid_int2str(window_id);
     if (str_winid) {
@@ -275,16 +275,16 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
             }
             if (!child_pid) {
                 // this is child
-                std::cerr << "in child pid: " << getpid() << "\n";
+                // std::cerr << "in child pid: " << getpid() << "\n";
                 if (seteuid(sudo_uid) == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
                                             strerror(errno)};
                 }
-                std::cerr << "child before open_tabs_helper\n";
+                // std::cerr << "child before open_tabs_helper\n";
                 const auto new_win_id = open_tabs_helper(cmds, same_window, window_id, client_name);
-                std::cerr << "child new_win_id: " << new_win_id << "\n";
+                // std::cerr << "child new_win_id: " << new_win_id << "\n";
                 const auto write_res = write(pipefd[1], &new_win_id, sizeof(new_win_id));
-                std::cerr << "child write_res: " << write_res << "\n";
+                // std::cerr << "child write_res: " << write_res << "\n";
                 if (write_res == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
                                             strerror(errno)};
@@ -302,7 +302,7 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                     errno    = 0;
                     read_res = read(pipefd[0], &new_win_id, sizeof(new_win_id));
                 } while (read_res == -1 && (errno == EAGAIN || errno == EINTR));
-                std::cerr << "read finished id: " << new_win_id << " res: " << read_res << "\n";
+                // std::cerr << "read finished id: " << new_win_id << " res: " << read_res << "\n";
                 if (read_res == -1) {
                     throw std::system_error{std::error_code(errno, std::generic_category()),
                                             strerror(errno)};

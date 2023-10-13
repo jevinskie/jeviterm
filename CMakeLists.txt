@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(jeviterm
    LANGUAGES CXX OBJCXX
-   VERSION 0.1.2
+   VERSION 0.1.3
    DESCRIPTION "C++/Objective-C++ library with a C API to interact with iTerm2 using protobufs and WebSockets"
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )
@@ -24,7 +24,13 @@ endif()
 
 option(JEVITERM_HOMEBREW_DEPS "Use homebrew for dependencies." ${JEVITERM_HOMEBREW_DEPS_DEFAULT})
 
-option(JEVITERM_DETERMINISTIC "Use versioned dependencies instead of latest git HEAD." OFF)
+if (JEVITERM_HOMEBREW_DEPS)
+   set(JEVITERM_DETERMINISTIC_DEFAULT ON)
+else()
+   set(JEVITERM_DETERMINISTIC_DEFAULT OFF)
+endif()
+
+option(JEVITERM_DETERMINISTIC "Use versioned dependencies instead of latest git HEAD." ${JEVITERM_DETERMINISTIC_DEFAULT})
 
 if (JEVITERM_FORCE_COLORED_OUTPUT)
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")

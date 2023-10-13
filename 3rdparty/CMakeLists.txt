@@ -25,13 +25,20 @@ if (NOT JEVITERM_HOMEBREW_DEPS)
     FetchContent_MakeAvailable(nlohmann_json_fetch)
     FetchContent_GetProperties(nlohmann_json_fetch SOURCE_DIR JSON_HPP_SRC_DIR)
 
-    add_library(nlohmann_json INTERFACE)
+    add_custom_command(OUTPUT
+        ${JSON_HPP_SRC_DIR}/nlohmann/json.hpp
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${JSON_HPP_SRC_DIR}/nlohmann
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${JSON_HPP_SRC_DIR}/json.hpp ${JSON_HPP_SRC_DIR}/nlohmann/json.hpp
+        DEPENDS ${JSON_HPP_SRC_DIR}/json.hpp
+    )
+
+    add_library(nlohmann_json INTERFACE ${JSON_HPP_SRC_DIR}/nlohmann/json.hpp)
     target_include_directories(nlohmann_json INTERFACE ${JSON_HPP_SRC_DIR})
 
 else()
 
     find_package(protobuf CONFIG REQUIRED)
-    find_package(nlohmann_json REQUIRED)
+    find_package(nlohmann_json REQUIRED GLOBAL)
 
 endif()
 
@@ -52,16 +59,9 @@ FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
 
 add_custom_command(OUTPUT
     ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
-    COMMAND ${CMAKE_COMMAND} -E copy ${ITERM2_PROTOBUF_SRC_DIR}/api.proto ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ITERM2_PROTOBUF_SRC_DIR}/api.proto ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
     DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/api.proto
 )
-
-# add_custom_command(OUTPUT
-#     ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto/iterm-api.pb.cc
-#     ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto/iterm-api.pb.h
-#     COMMAND $<TARGET_FILE:protobuf::protoc> --cpp_out=code_size:${CMAKE_CURRENT_BINARY_DIR}/iterm-api --proto_path ${protobuf_SOURCE_DIR}/src --proto_path ${ITERM2_PROTOBUF_SRC_DIR} ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
-#     DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
-# )
 
 add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
 target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
