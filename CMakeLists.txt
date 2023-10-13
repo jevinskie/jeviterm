@@ -9,6 +9,7 @@ project(jeviterm
 
 set(PRE_CONFIGURE_FILE "include/jeviterm.h.in")
 set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/jeviterm.h")
+set(GIT_FAIL_IF_NONZERO_EXIT OFF)
 include(cmake/git_watcher.cmake)
 
 # homebrew llvm toolchain hack

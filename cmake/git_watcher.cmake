@@ -81,7 +81,7 @@ endmacro()
 
 CHECK_REQUIRED_VARIABLE(PRE_CONFIGURE_FILE)
 CHECK_REQUIRED_VARIABLE(POST_CONFIGURE_FILE)
-CHECK_OPTIONAL_VARIABLE(GIT_STATE_FILE "${CMAKE_BINARY_DIR}/git-state-hash")
+CHECK_OPTIONAL_VARIABLE(GIT_STATE_FILE "${CMAKE_CURRENT_BINARY_DIR}/git-state-hash")
 CHECK_OPTIONAL_VARIABLE(GIT_WORKING_DIR "${CMAKE_SOURCE_DIR}")
 CHECK_OPTIONAL_VARIABLE_NOPATH(GIT_FAIL_IF_NONZERO_EXIT TRUE)
 CHECK_OPTIONAL_VARIABLE_NOPATH(GIT_IGNORE_UNTRACKED FALSE)
@@ -104,6 +104,7 @@ set(_state_variable_names
     GIT_COMMIT_SUBJECT
     GIT_COMMIT_BODY
     GIT_DESCRIBE
+    GIT_BRANCH
     # >>>
     # 1. Add the name of the additional git variable you're interested in monitoring
     #    to this list.
@@ -113,7 +114,9 @@ set(_state_variable_names
 
 # Macro: RunGitCommand
 # Description: short-hand macro for calling a git function. Outputs are the
-#              "exit_code" and "output" variables.
+#              "exit_code" and "output" variables. The "_permit_git_failure"
+#              variable can locally override the exit code checking- use it
+#              with caution.
 macro(RunGitCommand)
     execute_process(COMMAND
         "${GIT_EXECUTABLE}" ${ARGV}
@@ -122,13 +125,16 @@ macro(RunGitCommand)
         OUTPUT_VARIABLE output
         ERROR_VARIABLE stderr
         OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(NOT exit_code EQUAL 0)
+    if(NOT exit_code EQUAL 0 AND NOT _permit_git_failure)
         set(ENV{GIT_RETRIEVED_STATE} "false")
 
         # Issue 26: git info not properly set
         #
         # Check if we should fail if any of the exit codes are non-zero.
-        if(GIT_FAIL_IF_NONZERO_EXIT)
+        # Most methods have a fall-back default value that's used in case of non-zero
+        # exit codes. If you're feeling risky, disable this safety check and use
+        # those default values.
+        if(GIT_FAIL_IF_NONZERO_EXIT )
             string(REPLACE ";" " " args_with_spaces "${ARGV}")
             message(FATAL_ERROR "${stderr} (${GIT_EXECUTABLE} ${args_with_spaces})")
         endif()
@@ -223,6 +229,17 @@ function(GetGitState _working_dir)
         set(ENV{GIT_DESCRIBE} "unknown")
     else()
         set(ENV{GIT_DESCRIBE} "${output}")
+    endif()
+    
+    # Convert HEAD to a symbolic ref. This can fail, in which case we just
+    # set that variable to HEAD.
+    set(_permit_git_failure ON)
+    RunGitCommand(symbolic-ref --short -q ${object})
+    unset(_permit_git_failure)
+    if(NOT exit_code EQUAL 0)
+        set(ENV{GIT_BRANCH} "${object}")
+    else()
+        set(ENV{GIT_BRANCH} "${output}")
     endif()
 
     # >>>
@@ -324,7 +341,6 @@ function(SetupGitMonitoring)
             -DPOST_CONFIGURE_FILE=${POST_CONFIGURE_FILE}
             -DGIT_FAIL_IF_NONZERO_EXIT=${GIT_FAIL_IF_NONZERO_EXIT}
             -DGIT_IGNORE_UNTRACKED=${GIT_IGNORE_UNTRACKED}
-            -DPROJECT_VERSION=${PROJECT_VERSION}
             -P "${CMAKE_CURRENT_LIST_FILE}")
 endfunction()
 
