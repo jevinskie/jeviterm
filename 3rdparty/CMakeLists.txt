@@ -1,6 +1,14 @@
 cmake_policy(SET CMP0135 NEW)
 include(FetchContent)
 
+if (NOT JEVITERM_DETERMINISTIC)
+    set(ITERM_PROTOBUF_URL https://github.com/gnachman/iTerm2/raw/master/proto/api.proto)
+    set(JSON_HPP_URL https://github.com/nlohmann/json/raw/develop/single_include/nlohmann/json.hpp)
+else()
+    set(ITERM_PROTOBUF_URL https://github.com/gnachman/iTerm2/raw/v3.5.2/proto/api.proto)
+    set(JSON_HPP_URL https://github.com/nlohmann/json/raw/v3.11.3/single_include/nlohmann/json.hpp)
+endif()
+
 if (NOT JEVITERM_HOMEBREW_DEPS)
     option(protobuf_INSTALL OFF)
     option(protobuf_BUILD_TESTS OFF)
@@ -9,12 +17,6 @@ if (NOT JEVITERM_HOMEBREW_DEPS)
     option(ABSL_PROPAGATE_CXX_STD ON)
     add_subdirectory(protobuf)
     include(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/cmake/protobuf-generate.cmake)
-
-    if (NOT JEVITERM_DETERMINISTIC)
-        set(JSON_HPP_URL https://github.com/nlohmann/json/raw/develop/single_include/nlohmann/json.hpp)
-    else()
-        set(JSON_HPP_URL https://github.com/nlohmann/json/raw/v3.11.2/single_include/nlohmann/json.hpp)
-    endif()
 
     FetchContent_Declare(
         nlohmann_json_fetch
@@ -35,27 +37,30 @@ if (NOT JEVITERM_HOMEBREW_DEPS)
     add_library(nlohmann_json INTERFACE ${JSON_HPP_SRC_DIR}/nlohmann/json.hpp)
     target_include_directories(nlohmann_json INTERFACE ${JSON_HPP_SRC_DIR})
 
+    FetchContent_Declare(
+        iterm2-protobuf
+        FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
+        DOWNLOAD_NO_EXTRACT TRUE
+        URL ${ITERM_PROTOBUF_URL}
+    )
+    FetchContent_MakeAvailable(iterm2-protobuf)
+    FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
+
 else()
 
     find_package(protobuf CONFIG REQUIRED)
     find_package(nlohmann_json REQUIRED GLOBAL)
 
-endif()
+    FetchContent_Declare(
+        iterm2-protobuf
+        FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
+        DOWNLOAD_NO_EXTRACT TRUE
+        URL ${ITERM_PROTOBUF_URL}
+    )
+    FetchContent_MakeAvailable(iterm2-protobuf)
+    FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
 
-if (NOT JEVITERM_DETERMINISTIC)
-    set(ITERM_PROTOBUF_URL https://github.com/gnachman/iTerm2/raw/master/proto/api.proto)
-else()
-    set(ITERM_PROTOBUF_URL https://github.com/gnachman/iTerm2/raw/v20231011-nightly/proto/api.proto)
 endif()
-
-FetchContent_Declare(
-    iterm2-protobuf
-    FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
-    DOWNLOAD_NO_EXTRACT TRUE
-    URL ${ITERM_PROTOBUF_URL}
-)
-FetchContent_MakeAvailable(iterm2-protobuf)
-FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
 
 add_custom_command(OUTPUT
     ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
