@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(jeviterm
    LANGUAGES CXX OBJCXX
-   VERSION 0.1.6
+   VERSION 0.1.7
    DESCRIPTION "C++/Objective-C++ library with a C API to interact with iTerm2 using protobufs and WebSockets"
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )
@@ -41,7 +41,7 @@ if (JEVITERM_FORCE_COLORED_OUTPUT)
     endif ()
 endif ()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)

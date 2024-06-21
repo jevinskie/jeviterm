@@ -14,7 +14,7 @@ if (NOT JEVITERM_HOMEBREW_DEPS)
     option(protobuf_BUILD_TESTS OFF)
     option(protobuf_BUILD_SHARED_LIBS OFF)
     option(ABSL_ENABLE_INSTALL OFF)
-    option(ABSL_PROPAGATE_CXX_STD ON)
+    set(ABSL_PROPAGATE_CXX_STD ON)
     add_subdirectory(protobuf)
     include(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/cmake/protobuf-generate.cmake)
 
@@ -45,6 +45,7 @@ if (NOT JEVITERM_HOMEBREW_DEPS)
     )
     FetchContent_MakeAvailable(iterm2-protobuf)
     FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
+    set(ITERM2_PROTOBUF_DL_PATH ${ITERM2_PROTOBUF_SRC_DIR}/api.proto)
 
 else()
 
@@ -55,20 +56,20 @@ endif()
 
 add_custom_command(OUTPUT
     ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ITERM2_PROTOBUF_SRC_DIR}/api.proto ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
-    DEPENDS ${ITERM2_PROTOBUF_SRC_DIR}/api.proto
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ITERM2_PROTOBUF_DL_PATH} ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto
+    DEPENDS ${ITERM2_PROTOBUF_DL_PATH}
 )
 
 add_custom_command(OUTPUT
-    ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
+    ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir
 )
 
 add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
 target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
-target_include_directories(iterm-api-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto)
+target_include_directories(iterm-api-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir)
 protobuf_generate(
     TARGET iterm-api-proto
     IMPORT_DIRS ${ITERM2_PROTOBUF_SRC_DIR}
-    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto
-    DEPENDENCIES ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto)
+    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir
+    DEPENDENCIES ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir)
