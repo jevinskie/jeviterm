@@ -51,15 +51,6 @@ else()
     find_package(protobuf CONFIG REQUIRED)
     find_package(nlohmann_json REQUIRED GLOBAL)
 
-    FetchContent_Declare(
-        iterm2-protobuf
-        FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER
-        DOWNLOAD_NO_EXTRACT TRUE
-        URL ${ITERM_PROTOBUF_URL}
-    )
-    FetchContent_MakeAvailable(iterm2-protobuf)
-    FetchContent_GetProperties(iterm2-protobuf SOURCE_DIR ITERM2_PROTOBUF_SRC_DIR)
-
 endif()
 
 add_custom_command(OUTPUT
