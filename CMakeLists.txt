@@ -1,15 +1,15 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.31)
 
 project(jeviterm
    LANGUAGES CXX OBJCXX
-   VERSION 0.1.7
+   VERSION 0.1.8
    DESCRIPTION "C++/Objective-C++ library with a C API to interact with iTerm2 using protobufs and WebSockets"
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )
 
 set(PRE_CONFIGURE_FILE "include/jeviterm.h.in")
 set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/jeviterm.h")
-set(GIT_FAIL_IF_NONZERO_EXIT OFF)
+set(GIT_FAIL_IF_NONZERO_EXIT ON)
 include(cmake/git_watcher.cmake)
 
 # homebrew llvm toolchain hack
@@ -41,13 +41,18 @@ if (JEVITERM_FORCE_COLORED_OUTPUT)
     endif ()
 endif ()
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
+# FIXME
+add_compile_options(-Oz -flto=full -stdlib=libc++)
+add_link_options(-Oz -flto=full -stdlib=libc++)
 
 add_subdirectory(3rdparty)
 add_subdirectory(lib)
 add_subdirectory(tools)
+
+# add_compile_options(-isysroot /Applications/Xcode-15.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk)
 
