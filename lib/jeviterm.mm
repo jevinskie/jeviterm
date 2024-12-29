@@ -178,7 +178,7 @@ private:
         m_ws.set_option(websocket::stream_base::decorator([&](websocket::request_type &req) {
             req.set("origin", "ws://localhost/");
             req.set("host", "localhost");
-            req.set("x-iterm2-library-version", "jeviterm 0.24");
+            req.set("x-iterm2-library-version", "jeviterm 0.1.8");
             req.set("x-iterm2-disable-auth-ui", "false"); // FIXME: does this do anything?
             req.set("x-iterm2-cookie", cookieKey->cookie);
             req.set("x-iterm2-key", cookieKey->key);
