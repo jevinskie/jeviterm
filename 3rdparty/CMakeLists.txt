@@ -10,12 +10,14 @@ else()
 endif()
 
 if (NOT JEVITERM_HOMEBREW_DEPS)
+    option(ABSL_PROPAGATE_CXX_STD ON)
+    option(ABSL_ENABLE_INSTALL OFF)
+    add_subdirectory(abseil-cpp)
+
     option(protobuf_INSTALL OFF)
     option(protobuf_BUILD_TESTS OFF)
     option(protobuf_BUILD_SHARED_LIBS OFF)
-    option(ABSL_ENABLE_INSTALL OFF)
-    set(ABSL_PROPAGATE_CXX_STD ON)
-    add_subdirectory(abseil-cpp)
+    option(protobuf_BUILD_LIBPROTOC OFF)
     add_subdirectory(protobuf)
     include(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/cmake/protobuf-generate.cmake)
 
@@ -69,8 +71,16 @@ add_custom_command(OUTPUT
 add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
 target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
 target_include_directories(iterm-api-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir)
+set_target_properties(iterm-api-proto PROPERTIES
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
 protobuf_generate(
     TARGET iterm-api-proto
     IMPORT_DIRS ${ITERM2_PROTOBUF_SRC_DIR}
+    PLUGIN_OPTIONS "lite"
     PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir
     DEPENDENCIES ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir)

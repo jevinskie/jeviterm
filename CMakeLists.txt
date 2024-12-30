@@ -7,6 +7,8 @@ project(jeviterm
    HOMEPAGE_URL "https://github.com/jevinskie/jeviterm"
 )
 
+set(CMAKE_SKIP_INSTALL_RPATH ON)
+
 set(PRE_CONFIGURE_FILE "include/jeviterm.h.in")
 set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/jeviterm.h")
 set(GIT_FAIL_IF_NONZERO_EXIT ON)
@@ -41,14 +43,14 @@ if (JEVITERM_FORCE_COLORED_OUTPUT)
     endif ()
 endif ()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
 # FIXME
-add_compile_options(-Oz -flto=full -stdlib=libc++)
-add_link_options(-Oz -flto=full -stdlib=libc++)
+add_compile_options(-Oz -flto=full)
+add_link_options(-Oz -flto=full)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_EXTENSIONS ON)
 
 add_subdirectory(3rdparty)
 add_subdirectory(lib)

@@ -19,9 +19,9 @@ target_link_options(jeviterm PRIVATE -Wl,-compatibility_version,0.1.0 -Wl,-curre
 # target_link_options(jeviterm PRIVATE -Oz -flto=full)
 
 set_target_properties(jeviterm PROPERTIES
-    CXX_STANDARD 20
+    CXX_STANDARD 23
     CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF
+    CXX_EXTENSIONS ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     PUBLIC_HEADER ${CMAKE_CURRENT_BINARY_DIR}/../include/jeviterm.h
