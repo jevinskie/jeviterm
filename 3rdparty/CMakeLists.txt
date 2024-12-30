@@ -69,7 +69,7 @@ add_custom_command(OUTPUT
 )
 
 add_library(iterm-api-proto OBJECT ${ITERM2_PROTOBUF_SRC_DIR}/iterm-api.proto)
-target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf)
+target_link_libraries(iterm-api-proto PUBLIC protobuf::libprotobuf-lite)
 target_include_directories(iterm-api-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/iterm-api-proto-dir)
 set_target_properties(iterm-api-proto PROPERTIES
     CXX_STANDARD 23
