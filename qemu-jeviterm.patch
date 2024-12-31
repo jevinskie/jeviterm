@@ -1,11 +1,14 @@
+commit 871dd2fa0a95c765390bb0602babf0f689e61fdb
+Author: Jevin Sweval <jevinsweval@gmail.com>
+Date:   Mon Dec 30 19:40:57 2024 -0500
+
+    Add jeviterm 0.1.8 support
+
 diff --git a/chardev/char-pty.c b/chardev/char-pty.c
-index 53f25c6bbd..ca13ad0b2f 100644
+index cbb21b76ae..ae361e72fb 100644
 --- a/chardev/char-pty.c
 +++ b/chardev/char-pty.c
-@@ -31,12 +31,16 @@
- #include "qemu/module.h"
- #include "qemu/qemu-print.h"
- 
+@@ -35,6 +35,10 @@
  #include "chardev/char-io.h"
  #include "qom/object.h"
  
@@ -16,22 +19,16 @@ index 53f25c6bbd..ca13ad0b2f 100644
  struct PtyChardev {
      Chardev parent;
      QIOChannel *ioc;
-     int read_bytes;
- 
-     int connected;
-@@ -337,12 +341,25 @@ static void char_pty_open(Chardev *chr,
-     s->ioc = QIO_CHANNEL(qio_channel_file_new_fd(master_fd));
-     name = g_strdup_printf("chardev-pty-%s", chr->label);
-     qio_channel_set_name(QIO_CHANNEL(s->ioc), name);
-     g_free(name);
-     s->timer_src = NULL;
-     *be_opened = false;
+@@ -374,6 +378,19 @@ static void char_pty_open(Chardev *chr,
+             s->path = g_strdup(path);
+         }
+     }
 +
 +#ifdef CONFIG_JEVITERM
 +    if (backend->u.pty.data->spawngui) {
 +        static int last_win_id = JEVITERM_NONE_WINDOW_ID;
-+        const char *cmd = g_strdup_printf("/usr/bin/env bash -l -c \"picocom -q %s; read\"", pty_name);
-+        assert(cmd);
++        const char *cmd = g_strdup_printf("/usr/bin/env bash -e -o pipefail -l -c \"/opt/homebrew/opt/picocom/bin/picocom -q %s; read\"", pty_name);
++        g_assert(cmd);
 +        const char *cmds[] = {cmd, NULL};
 +        const int new_win_id = jeviterm_open_tabs(cmds, 1, last_win_id, "qemu");
 +        last_win_id = new_win_id;
@@ -41,19 +38,13 @@ index 53f25c6bbd..ca13ad0b2f 100644
 +
  }
  
- static void char_pty_class_init(ObjectClass *oc, void *data)
- {
-     ChardevClass *cc = CHARDEV_CLASS(oc);
- 
+ static void char_pty_parse(QemuOpts *opts, ChardevBackend *backend,
 diff --git a/chardev/char.c b/chardev/char.c
-index b005df3ccf..819c54c4a8 100644
+index 44ff116fcd..c0a87aee5c 100644
 --- a/chardev/char.c
 +++ b/chardev/char.c
-@@ -498,12 +498,14 @@ void qemu_chr_parse_common(QemuOpts *opts, ChardevCommon *backend)
- 
-     backend->has_logfile = logfile != NULL;
+@@ -517,6 +517,8 @@ void qemu_chr_parse_common(QemuOpts *opts, ChardevCommon *backend)
      backend->logfile = g_strdup(logfile);
- 
      backend->has_logappend = true;
      backend->logappend = qemu_opt_get_bool(opts, "logappend", false);
 +
@@ -61,13 +52,7 @@ index b005df3ccf..819c54c4a8 100644
  }
  
  static const ChardevClass *char_get_class(const char *driver, Error **errp)
- {
-     ObjectClass *oc;
-     const ChardevClass *cc;
-@@ -940,12 +942,16 @@ QemuOptsList qemu_chardev_opts = {
-             .type = QEMU_OPT_BOOL,
-             .def_value_str = "on",
-         },{
+@@ -967,6 +969,10 @@ QemuOptsList qemu_chardev_opts = {
              .name = "abstract",
              .type = QEMU_OPT_BOOL,
  #endif
@@ -78,84 +63,59 @@ index b005df3ccf..819c54c4a8 100644
          },
          { /* end of list */ }
      },
- };
- 
- bool qemu_chr_has_feature(Chardev *chr,
 diff --git a/meson.build b/meson.build
-index 15dff0a8d3..0c84eb065f 100644
+index f4109cd3ca..b5bf585914 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -632,12 +632,19 @@ if vmnet.found() and not cc.has_header_symbol('vmnet/vmnet.h',
-     error('vmnet.framework API is outdated')
-   else
-     warning('vmnet.framework API is outdated, disabling')
+@@ -1198,6 +1198,13 @@ if vmnet.found() and not cc.has_header_symbol('vmnet/vmnet.h',
    endif
  endif
  
 +jeviterm = not_found
 +if get_option('jeviterm').allowed()
-+  jeviterm = dependency('jeviterm', version: '>=0.1.1',
++  jeviterm = dependency('jeviterm', version: '>=0.1.8',
 +                        required: get_option('jeviterm'),
-+                        method: 'pkg-config',  kwargs: static_kwargs)
++                        method: 'pkg-config')
 +endif
 +
  seccomp = not_found
  seccomp_has_sysrawrc = false
  if not get_option('seccomp').auto() or have_system or have_tools
-   seccomp = dependency('libseccomp', version: '>=2.3.0',
-                        required: get_option('seccomp'),
-                        method: 'pkg-config', kwargs: static_kwargs)
-@@ -1819,12 +1826,13 @@ endif
- config_host_data.set('CONFIG_MODULE_UPGRADES', get_option('module_upgrades'))
- 
- config_host_data.set('CONFIG_ATTR', libattr.found())
- config_host_data.set('CONFIG_BDRV_WHITELIST_TOOLS', get_option('block_drv_whitelist_in_tools'))
- config_host_data.set('CONFIG_BRLAPI', brlapi.found())
- config_host_data.set('CONFIG_COCOA', cocoa.found())
-+config_host_data.set('CONFIG_JEVITERM', jeviterm.found())
+@@ -2446,6 +2453,7 @@ config_host_data.set('CONFIG_DARWIN', host_os == 'darwin')
+ config_host_data.set('CONFIG_FDT', fdt.found())
  config_host_data.set('CONFIG_FUZZ', get_option('fuzzing'))
  config_host_data.set('CONFIG_GCOV', get_option('b_coverage'))
++config_host_data.set('CONFIG_JEVITERM', jeviterm.found())
  config_host_data.set('CONFIG_LIBUDEV', libudev.found())
- config_host_data.set('CONFIG_LZO', lzo.found())
- config_host_data.set('CONFIG_MPATH', mpathpersist.found())
- config_host_data.set('CONFIG_MPATH_NEW_API', mpathpersist_new_api)
-@@ -3320,13 +3328,13 @@ libqmp = static_library('qmp', qmp_ss.sources() + genh,
-                         build_by_default: false)
- 
- qmp = declare_dependency(link_whole: [libqmp])
+ config_host_data.set('CONFIG_LINUX', host_os == 'linux')
+ config_host_data.set('CONFIG_POSIX', host_os != 'windows')
+@@ -3988,11 +3996,11 @@ qmp = declare_dependency(objects: libqmp.extract_all_objects(recursive: false),
+                          dependencies: qmp_ss.dependencies())
  
  libchardev = static_library('chardev', chardev_ss.sources() + genh,
-                             name_suffix: 'fa',
 -                            dependencies: chardev_ss.dependencies(),
 +                            dependencies: chardev_ss.dependencies() + jeviterm,
                              build_by_default: false)
  
- chardev = declare_dependency(link_whole: libchardev)
+ chardev = declare_dependency(objects: libchardev.extract_all_objects(recursive: false),
+-                             dependencies: chardev_ss.dependencies())
++                             dependencies: chardev_ss.dependencies() + jeviterm)
  
- hwcore_ss = hwcore_ss.apply(config_host, strict: false)
+ hwcore_ss = hwcore_ss.apply({})
  libhwcore = static_library('hwcore', sources: hwcore_ss.sources() + genh,
-@@ -3885,12 +3893,13 @@ summary_info += {'Linux keyring':     have_keyring}
- summary(summary_info, bool_yn: true, section: 'Crypto')
- 
- # Libraries
+@@ -4702,6 +4710,7 @@ summary(summary_info, bool_yn: true, section: 'Crypto')
  summary_info = {}
- if targetos == 'darwin'
+ if host_os == 'darwin'
    summary_info += {'Cocoa support':           cocoa}
 +  summary_info += {'jeviterm support':        jeviterm}
-   summary_info += {'vmnet.framework support': vmnet}
  endif
  summary_info += {'SDL support':       sdl}
  summary_info += {'SDL image support': sdl_image}
- summary_info += {'GTK support':       gtk}
- summary_info += {'pixman':            pixman}
 diff --git a/meson_options.txt b/meson_options.txt
-index 66128178bf..f13fb651b6 100644
+index 5eeaf3eee5..e92d412943 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -120,12 +120,14 @@ option('cap_ng', type : 'feature', value : 'auto',
- option('blkio', type : 'feature', value : 'auto',
-        description: 'libblkio block device driver')
- option('bpf', type : 'feature', value : 'auto',
+@@ -148,6 +148,8 @@ option('bpf', type : 'feature', value : 'auto',
          description: 'eBPF support')
  option('cocoa', type : 'feature', value : 'auto',
         description: 'Cocoa user interface (macOS only)')
@@ -164,16 +124,16 @@ index 66128178bf..f13fb651b6 100644
  option('curl', type : 'feature', value : 'auto',
         description: 'CURL block device driver')
  option('gio', type : 'feature', value : 'auto',
-        description: 'use libgio for D-Bus support')
- option('glusterfs', type : 'feature', value : 'auto',
-        description: 'Glusterfs block device driver')
 diff --git a/qapi/char.json b/qapi/char.json
-index 923dc5056d..cff3eccc92 100644
+index e045354350..811cc8631c 100644
 --- a/qapi/char.json
 +++ b/qapi/char.json
-@@ -206,13 +206,14 @@
- #             (default to false to truncate)
+@@ -199,11 +199,14 @@
+ # @logappend: true to append instead of truncate (default to false to
+ #     truncate)
  #
++# @spawngui: true to spawn a GUI terminal attached to the chardev(s)
++#
  # Since: 2.6
  ##
  { 'struct': 'ChardevCommon',
@@ -184,36 +144,24 @@ index 923dc5056d..cff3eccc92 100644
  
  ##
  # @ChardevFile:
- #
- # Configuration info for file chardevs.
- #
 diff --git a/qemu-options.hx b/qemu-options.hx
-index ceee0ddc25..1ec45c48fa 100644
+index cc694d3b89..9f50f047ff 100644
 --- a/qemu-options.hx
 +++ b/qemu-options.hx
-@@ -3373,13 +3373,13 @@ DEF("chardev", HAS_ARG, QEMU_OPTION_chardev,
-     "-chardev file,id=id,path=path[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
-     "-chardev pipe,id=id,path=path[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
- #ifdef _WIN32
+@@ -3696,7 +3696,7 @@ DEF("chardev", HAS_ARG, QEMU_OPTION_chardev,
      "-chardev console,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
      "-chardev serial,id=id,path=path[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
  #else
--    "-chardev pty,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
-+    "-chardev pty,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off][,spawngui=on|off]\n"
+-    "-chardev pty,id=id[,path=path][,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
++    "-chardev pty,id=id[,path=path][,mux=on|off][,logfile=PATH][,logappend=on|off][,spawngui=on|off]\n"
      "-chardev stdio,id=id[,mux=on|off][,signal=on|off][,logfile=PATH][,logappend=on|off]\n"
  #endif
  #ifdef CONFIG_BRLAPI
-     "-chardev braille,id=id[,mux=on|off][,logfile=PATH][,logappend=on|off]\n"
- #endif
- #if defined(__linux__) || defined(__sun__) || defined(__FreeBSD__) \
 diff --git a/scripts/meson-buildoptions.sh b/scripts/meson-buildoptions.sh
-index 2cb0de5601..8ff2d9f82e 100644
+index a8066aab03..70ca72d008 100644
 --- a/scripts/meson-buildoptions.sh
 +++ b/scripts/meson-buildoptions.sh
-@@ -96,12 +96,13 @@ meson_options_help() {
-   printf "%s\n" '  guest-agent     Build QEMU Guest Agent'
-   printf "%s\n" '  guest-agent-msi Build MSI package for the QEMU Guest Agent'
-   printf "%s\n" '  hax             HAX acceleration support'
+@@ -133,6 +133,7 @@ meson_options_help() {
    printf "%s\n" '  hvf             HVF acceleration support'
    printf "%s\n" '  iconv           Font glyph conversion support'
    printf "%s\n" '  jack            JACK sound support'
@@ -221,13 +169,7 @@ index 2cb0de5601..8ff2d9f82e 100644
    printf "%s\n" '  keyring         Linux keyring support'
    printf "%s\n" '  kvm             KVM acceleration support'
    printf "%s\n" '  l2tpv3          l2tpv3 network backend support'
-   printf "%s\n" '  libdaxctl       libdaxctl support'
-   printf "%s\n" '  libiscsi        libiscsi userspace initiator'
-   printf "%s\n" '  libnfs          libnfs block device driver'
-@@ -288,12 +289,14 @@ _meson_option_parse() {
-     --includedir=*) quote_sh "-Dincludedir=$2" ;;
-     --enable-install-blobs) printf "%s" -Dinstall_blobs=true ;;
-     --disable-install-blobs) printf "%s" -Dinstall_blobs=false ;;
+@@ -356,6 +357,8 @@ _meson_option_parse() {
      --interp-prefix=*) quote_sh "-Dinterp_prefix=$2" ;;
      --enable-jack) printf "%s" -Djack=enabled ;;
      --disable-jack) printf "%s" -Djack=disabled ;;
@@ -236,6 +178,3 @@ index 2cb0de5601..8ff2d9f82e 100644
      --enable-keyring) printf "%s" -Dkeyring=enabled ;;
      --disable-keyring) printf "%s" -Dkeyring=disabled ;;
      --enable-kvm) printf "%s" -Dkvm=enabled ;;
-     --disable-kvm) printf "%s" -Dkvm=disabled ;;
-     --enable-l2tpv3) printf "%s" -Dl2tpv3=enabled ;;
-     --disable-l2tpv3) printf "%s" -Dl2tpv3=disabled ;;
