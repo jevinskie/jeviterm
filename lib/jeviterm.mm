@@ -1,6 +1,17 @@
 #include "jeviterm.h"
 #include "iterm-api.pb.h"
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <unistd.h>
+
 #import <Foundation/Foundation.h>
 
 #pragma clang diagnostic push
@@ -10,47 +21,32 @@
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
-#include <cerrno>
-#include <cstdlib>
-#include <cstring>
-#include <iomanip>
-#include <iostream>
 #include <nlohmann/json.hpp>
-#include <optional>
-#include <string>
-#include <system_error>
-#include <unistd.h>
 
 using namespace std::string_literals;
 
 // AppleScript hack
-__attribute__((constructor)) void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
-    static bool already_done = false;
-    if (already_done) {
-        return;
-    }
-    // parts of AppleScript need to be primed on the main thread
-    if (!NSThread.isMainThread) {
-        // std::cerr << "prime from not main thread\n";
-        dispatch_sync(dispatch_get_main_queue(), ^{
-          [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
-        });
-    } else {
-        // already on main thread
-        // std::cerr << "prime from main thread\n";
-        [[[NSAppleScript alloc] initWithSource:@"\"\""] executeAndReturnError:nil];
-    }
-    already_done = true;
-    // std::cerr << "prime done!\n";
+__attribute__((constructor)) static void run_CurrentThreadIsMainOrCooperative_on_main_thread() {
+    static std::once_flag flag;
+    std::call_once(flag, []() {
+        // parts of AppleScript need to be primed on the main thread
+        if (!NSThread.isMainThread) {
+            dispatch_sync(dispatch_get_main_queue(),
+                          ^{ [[NSAppleScript.alloc initWithSource:@"\"\""] executeAndReturnError:nil]; });
+        } else {
+            // already on main thread
+            [[NSAppleScript.alloc initWithSource:@"\"\""] executeAndReturnError:nil];
+        }
+    });
 }
 
 namespace jeviterm {
 
-namespace beast     = boost::beast;                  // from <boost/beast.hpp>
-namespace http      = beast::http;                   // from <boost/beast/http.hpp>
-namespace websocket = beast::websocket;              // from <boost/beast/websocket.hpp>
-namespace net       = boost::asio;                   // from <boost/asio.hpp>
-using unix_fd = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
+namespace beast     = boost::beast;                        // from <boost/beast.hpp>
+namespace http      = beast::http;                         // from <boost/beast/http.hpp>
+namespace websocket = beast::websocket;                    // from <boost/beast/websocket.hpp>
+namespace net       = boost::asio;                         // from <boost/asio.hpp>
+using unix_fd       = boost::asio::local::stream_protocol; // from <boost/asio/local/stream_protocol.hpp>
 
 class iTermRPC {
 public:
@@ -64,8 +60,7 @@ public:
     int winid_str2int(const window_id_t &winid_str) {
         const auto idx = std::find(m_win_ids.cbegin(), m_win_ids.cend(), winid_str);
         if (idx != m_win_ids.cend()) {
-            return std::distance(m_win_ids.cbegin(), idx) +
-                   1; // 1 indexed, 0 reserved for new window
+            return std::distance(m_win_ids.cbegin(), idx) + 1; // 1 indexed, 0 reserved for new window
         }
         return JEVITERM_NONE_WINDOW_ID;
     }
@@ -75,7 +70,7 @@ public:
         if (winid_int < 1 || winid_int > m_win_ids.size()) {
             return std::nullopt;
         }
-        return m_win_ids[winid_int - 1];
+        return m_win_ids.at(winid_int - 1);
     }
 
     std::optional<window_id_t> create_tab(const char *cmd, const window_id_t *window = nullptr) {
@@ -109,51 +104,42 @@ public:
         return win_id;
     }
 
+private:
     struct CookieKey {
         std::string cookie;
         std::string key;
     };
 
-    static const std::optional<CookieKey> &getCookieAndKey(const std::string &clientName,
-                                                           bool force = false) {
-        static std::optional<CookieKey> cookieKey{std::nullopt};
-        if (!cookieKey || force) {
-            NSDictionary<NSString *, id> *err = nil;
-            NSAppleScript *get_stuff_as       = [[NSAppleScript alloc]
-                initWithSource:
-                    [NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
-                                                     @"and key for app named \"%s\"",
-                                               clientName.c_str()]];
-            // std::cerr << "before prime\n";
-            // std::cerr << "after prime\n";
-            // std::cerr << "before as exec\n";
-            NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
-            // std::cerr << "after as exec\n";
-            if (err) {
-                std::cerr << "jeviterm AppleScript error: " <<
-                    [NSString stringWithFormat:@"%@", err].UTF8String << "\n";
-                return cookieKey;
-            }
-            NSArray<NSString *> *splitParts =
-                [res_evt.stringValue componentsSeparatedByString:@" "];
-            assert(splitParts.count == 2);
-            cookieKey = CookieKey{.cookie = std::string{splitParts[0].UTF8String},
-                                  .key    = std::string{splitParts[1].UTF8String}};
+    static const std::optional<CookieKey> getCookieAndKey(const std::string &clientName) {
+        NSDictionary<NSString *, id> *err = nil;
+        NSAppleScript *get_stuff_as       = [NSAppleScript.alloc
+            initWithSource:[NSString stringWithFormat:@"tell application \"iTerm2\" to request cookie "
+                                                            @"and key for app named \"%s\"",
+                                                      clientName.c_str()]];
+        // std::cerr << "before prime\n";
+        // std::cerr << "after prime\n";
+        // std::cerr << "before as exec\n";
+        NSAppleEventDescriptor *res_evt = [get_stuff_as executeAndReturnError:&err];
+        // std::cerr << "after as exec\n";
+        if (err) {
+            fprintf(stderr, "jeviterm AppleScript error: '%s'\n", [NSString stringWithFormat:@"%@", err].UTF8String);
+            return std::nullopt;
         }
-        return cookieKey;
+        NSArray<NSString *> *splitParts = [res_evt.stringValue componentsSeparatedByString:@" "];
+        assert(splitParts.count == 2);
+        return CookieKey{.cookie = std::string{splitParts[0].UTF8String}, .key = std::string{splitParts[1].UTF8String}};
     }
 
     static std::string getSocketPath(void) {
-        return std::string{[NSFileManager.defaultManager
-                               URLsForDirectory:NSApplicationSupportDirectory
-                                      inDomains:NSUserDomainMask][0]
-                               .path.UTF8String} +
-               "/iTerm2/private/socket";
+        auto r = std::string{[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                                                  inDomains:NSUserDomainMask][0].path.UTF8String} +
+                 "/iTerm2/private/socket";
+        fprintf(stderr, "getSocketPath: '%s'\n", r.c_str());
+        return r;
     }
 
-private:
     iTermRPC(const std::string &client_name)
-        : m_client_name{client_name}, m_ws{m_ioc}, m_ep{getSocketPath()} {
+        : m_client_name{client_name}, m_cookie_key{getCookieAndKey(client_name)}, m_ws{m_ioc}, m_ep{getSocketPath()} {
         m_ws.binary(true);
         connect();
     }
@@ -165,9 +151,8 @@ private:
 
     bool connect() {
         // std::cerr << "connect\n";
-        const auto cookieKey = getCookieAndKey(m_client_name);
-        if (!cookieKey) {
-            std::cerr << "failed to get cookie and key from AppleScript\n";
+        if (!m_cookie_key) {
+            fprintf(stderr, "failed to get cookie and key from AppleScript\n");
             return false;
         }
         // std::cerr << "got cookie and key\n";
@@ -180,8 +165,8 @@ private:
             req.set("host", "localhost");
             req.set("x-iterm2-library-version", "jeviterm 0.1.8");
             req.set("x-iterm2-disable-auth-ui", "false"); // FIXME: does this do anything?
-            req.set("x-iterm2-cookie", cookieKey->cookie);
-            req.set("x-iterm2-key", cookieKey->key);
+            req.set("x-iterm2-cookie", m_cookie_key->cookie);
+            req.set("x-iterm2-key", m_cookie_key->key);
             req.set("x-iterm2-advisory-name", m_client_name);
         }));
 
@@ -196,8 +181,7 @@ private:
         return true;
     }
 
-    iterm2::ClientOriginatedMessage get_create_tab_msg(std::string cmd,
-                                                       const window_id_t *window = nullptr) {
+    iterm2::ClientOriginatedMessage get_create_tab_msg(std::string cmd, const window_id_t *window = nullptr) {
         iterm2::ClientOriginatedMessage reqMsg;
 
         iterm2::CreateTabRequest ctReqMsg;
@@ -217,20 +201,19 @@ private:
     }
 
 private:
-    std::string m_client_name;
+    const std::string m_client_name;
+    const std::optional<CookieKey> m_cookie_key;
     net::io_context m_ioc;
     unix_fd::endpoint m_ep;
     websocket::stream<unix_fd::socket> m_ws;
-    std::vector<std::string> m_win_ids; // will not be thread safe
+    std::vector<std::string> m_win_ids; // FIXME: will not be thread safe
 };
 
 } // namespace jeviterm
 
 using namespace jeviterm;
 
-static int open_tabs_helper(const char **cmds, int same_window, int window_id,
-                            const char *client_name) {
-    auto &rpc = iTermRPC::shared_inst(client_name);
+static int open_tabs_helper(const char **cmds, int same_window, int window_id, iTermRPC &rpc) {
     // std::cerr << "got rpc shared inst\n";
     iTermRPC::window_id_t existing_window_id;
     const auto str_winid = rpc.winid_int2str(window_id);
@@ -239,8 +222,7 @@ static int open_tabs_helper(const char **cmds, int same_window, int window_id,
     }
     std::optional<iTermRPC::window_id_t> new_window_id;
     for (const char **cmdp = cmds; *cmdp != nullptr; ++cmdp) {
-        new_window_id =
-            rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
+        new_window_id = rpc.create_tab(*cmdp, existing_window_id.empty() ? nullptr : &existing_window_id);
         if (new_window_id && same_window) {
             existing_window_id = *new_window_id;
         }
@@ -248,8 +230,8 @@ static int open_tabs_helper(const char **cmds, int same_window, int window_id,
     return rpc.winid_str2int(new_window_id ? *new_window_id : "");
 }
 
-__attribute__((visibility("default"))) int
-jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char *client_name) {
+__attribute__((visibility("default"))) int jeviterm_open_tabs(const char **cmds, int same_window, int window_id,
+                                                              const char *client_name) {
     if (!cmds) {
         return 1;
     }
@@ -258,36 +240,36 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
     }
     try {
         // call this to stash the cookie/key because AppleScript doesn't like to run after forking?
-        iTermRPC::getCookieAndKey(client_name);
+        // auto &rpc                    = iTermRPC::shared_inst(client_name);
         const auto sudo_uid_nsstring = NSProcessInfo.processInfo.environment[@"SUDO_UID"];
         pid_t child_pid;
+        fprintf(stderr, "sudo_uid_nsstring: %p '%s'\n", sudo_uid_nsstring,
+                sudo_uid_nsstring ? sudo_uid_nsstring.UTF8String : "(nil)");
         if (sudo_uid_nsstring) {
+            assert(!"sudo_uid_nsstring is present, would fork normally (can't remember why)");
             const auto sudo_uid = std::stoi(std::string{sudo_uid_nsstring.UTF8String});
             int pipefd[2];
             if (pipe(pipefd) == -1) {
-                throw std::system_error{std::error_code(errno, std::generic_category()),
-                                        strerror(errno)};
+                throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
             }
+            auto &rpc = iTermRPC::shared_inst(client_name);
             child_pid = fork();
             if (child_pid == -1) {
-                throw std::system_error{std::error_code(errno, std::generic_category()),
-                                        strerror(errno)};
+                throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
             }
             if (!child_pid) {
                 // this is child
                 // std::cerr << "in child pid: " << getpid() << "\n";
                 if (seteuid(sudo_uid) == -1) {
-                    throw std::system_error{std::error_code(errno, std::generic_category()),
-                                            strerror(errno)};
+                    throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
                 }
                 // std::cerr << "child before open_tabs_helper\n";
-                const auto new_win_id = open_tabs_helper(cmds, same_window, window_id, client_name);
+                const auto new_win_id = open_tabs_helper(cmds, same_window, window_id, rpc);
                 // std::cerr << "child new_win_id: " << new_win_id << "\n";
                 const auto write_res = write(pipefd[1], &new_win_id, sizeof(new_win_id));
                 // std::cerr << "child write_res: " << write_res << "\n";
                 if (write_res == -1) {
-                    throw std::system_error{std::error_code(errno, std::generic_category()),
-                                            strerror(errno)};
+                    throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
                 } else if (write_res != sizeof(new_win_id)) {
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
                                             "couldn't write new window id from child"};
@@ -304,8 +286,7 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                 } while (read_res == -1 && (errno == EAGAIN || errno == EINTR));
                 // std::cerr << "read finished id: " << new_win_id << " res: " << read_res << "\n";
                 if (read_res == -1) {
-                    throw std::system_error{std::error_code(errno, std::generic_category()),
-                                            strerror(errno)};
+                    throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
                 } else if (read_res != sizeof(new_win_id)) {
                     throw std::system_error{std::error_code(EPIPE, std::generic_category()),
                                             "couldn't read new window id from parent"};
@@ -316,16 +297,16 @@ jeviterm_open_tabs(const char **cmds, int same_window, int window_id, const char
                     waitpid_res = waitpid(child_pid, &child_status, 0);
                 } while (waitpid_res == -1 && (errno == EAGAIN || errno == EINTR));
                 if (waitpid_res == -1) {
-                    throw std::system_error{std::error_code(errno, std::generic_category()),
-                                            strerror(errno)};
+                    throw std::system_error{std::error_code(errno, std::generic_category()), strerror(errno)};
                 }
                 return new_win_id;
             }
         } else {
-            return open_tabs_helper(cmds, same_window, window_id, client_name);
+            auto &rpc = iTermRPC::shared_inst(client_name);
+            return open_tabs_helper(cmds, same_window, window_id, rpc);
         }
     } catch (std::exception const &e) {
-        std::cerr << "jeviterm_open_tabs error: " << e.what() << "\n";
+        fprintf(stderr, "jeviterm_open_tabs error: '%s'\n", e.what());
         return JEVITERM_NONE_WINDOW_ID;
     }
 }
